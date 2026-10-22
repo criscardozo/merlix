@@ -75,7 +75,7 @@ final class Workspace {
             return
         }
         projectDraft = ProjectDraft(
-            project: Project(id: UUID(), name: url.lastPathComponent, path: path, groupID: group?.id ?? selectedProjectGroupID),
+            project: Project(id: UUID(), name: ProjectDraft.name(for: url), path: path, groupID: group?.id ?? selectedProjectGroupID),
             isNew: true)
     }
 
@@ -93,7 +93,7 @@ final class Workspace {
         }
         if draft.isNew {
             projects.append(project)
-            newSession(in: project.id, resuming: draft.resume)
+            newSession(in: project.id, command: draft.startsShell ? "" : "claude", resuming: draft.resume)
         } else if let index = projects.firstIndex(where: { $0.id == project.id }) {
             if project.groupID == draft.originalGroupID { project.groupID = projects[index].groupID }
             projects[index] = project

@@ -45,7 +45,9 @@ struct ProjectSheet: View {
     @State private var preview: NSImage?
     @State private var creatingGroup = false
     @State private var conversations: [ClaudeConversation] = []
-    @State private var resuming = false
+    @State private var start = Start.newSession
+
+    private enum Start { case newSession, previousSession, shell }
 
     private static let newGroupTag = UUID()
 
@@ -120,21 +122,23 @@ struct ProjectSheet: View {
                     }
                 }
                 if draft.isNew {
-                    Section("Claude") {
-                        Picker("Start with", selection: $resuming) {
-                            Text("A new session").tag(false)
-                            Text("A previous session").tag(true)
+                    Section("Start with") {
+                        Picker("Start with", selection: $start) {
+                            Text("A new Claude session").tag(Start.newSession)
+                            Text("A previous Claude session").tag(Start.previousSession)
                                 .disabled(conversations.isEmpty)
+                            Text("A shell, without Claude").tag(Start.shell)
                         }
                         .pickerStyle(.radioGroup)
-                        if resuming {
+                        .labelsHidden()
+                        if start == .previousSession {
                             Picker("Session", selection: $draft.resume) {
                                 ForEach(conversations) { conversation in
                                     Text("\(conversation.title) · \(conversation.modified.formatted(.relative(presentation: .named)))")
                                         .tag(Optional(conversation))
                                 }
                             }
-                        } else if conversations.isEmpty {
+                        } else if start == .newSession, conversations.isEmpty {
                             Text("No earlier Claude sessions in this folder.")
                                 .foregroundStyle(.secondary)
                         }
@@ -163,10 +167,11 @@ struct ProjectSheet: View {
             guard draft.isNew else { return }
             let folder = draft.project.path
             conversations = await Task.detached { ClaudeTranscripts.conversations(in: folder) }.value
-            if conversations.isEmpty { resuming = false }
+            if conversations.isEmpty, start == .previousSession { start = .newSession }
         }
-        .onChange(of: resuming) {
-            draft.resume = resuming ? (draft.resume ?? conversations.first) : nil
+        .onChange(of: start) {
+            draft.resume = start == .previousSession ? (draft.resume ?? conversations.first) : nil
+            draft.startsShell = start == .shell
         }
         .sheet(isPresented: $creatingGroup) {
             NewGroupSheet { name in draft.project.groupID = workspace.addGroup(named: name).id }
@@ -210,8 +215,8 @@ struct ProjectSheet: View {
         panel.canChooseFiles = false
         panel.directoryURL = URL(filePath: draft.project.path)
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let oldFolderName = URL(filePath: draft.project.path).lastPathComponent
-        if draft.project.name == oldFolderName { draft.project.name = url.lastPathComponent }
+        let oldFolderName = ProjectDraft.name(for: URL(filePath: draft.project.path))
+        if draft.project.name == oldFolderName { draft.project.name = ProjectDraft.name(for: url) }
         draft.project.path = url.standardizedFileURL.path(percentEncoded: false)
     }
 

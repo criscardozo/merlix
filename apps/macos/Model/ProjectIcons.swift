@@ -13,6 +13,8 @@ struct ProjectDraft: Identifiable {
     /// For a new project: an earlier Claude conversation in its folder to pick
     /// up instead of starting a fresh one.
     var resume: ClaudeConversation?
+    /// For a new project: open a plain shell instead of starting Claude.
+    var startsShell = false
 
     init(project: Project, isNew: Bool) {
         self.project = project
@@ -21,6 +23,12 @@ struct ProjectDraft: Identifiable {
     }
 
     var id: UUID { project.id }
+
+    /// A folder's name as a project name: its first letter in upper case.
+    static func name(for folder: URL) -> String {
+        let name = folder.lastPathComponent
+        return name.prefix(1).uppercased() + name.dropFirst()
+    }
 }
 
 /// Finds and caches each project's icon: an image the user picked, else one in
