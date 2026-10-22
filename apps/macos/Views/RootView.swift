@@ -144,6 +144,8 @@ private struct DetailCard: View {
             VStack(spacing: 14) {
                 CatFace()
                     .frame(width: 92, height: 92)
+                    // As faint as the system symbol it replaces.
+                    .opacity(0.45)
                 Text("No sessions")
             }
         } description: {
