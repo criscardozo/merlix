@@ -100,14 +100,19 @@ final class Session: Identifiable {
     /// conversation id chosen up front (`claudeSessionID`, set by Workspace.start):
     /// resumed when its transcript exists, otherwise started under that id.
     var startCommand: String {
-        guard let settings = ClaudeHooks.shared.settingsURL else { return command }
+        // With the global hooks installed every claude reports already;
+        // --settings would make each event arrive twice.
+        var claude = ["claude"]
+        if !ClaudeHookInstaller.isInstalled, let settings = ClaudeHooks.shared.settingsURL {
+            claude += ["--settings", Self.quoted(settings.path)]
+        }
         guard isClaude else {
             // A shell where Claude was running by hand: go back to its folder and resume it.
             guard let claudeSessionID, let claudeDirectory, let transcriptPath,
                   FileManager.default.fileExists(atPath: transcriptPath) else { return command }
-            return "cd \(Self.quoted(claudeDirectory)) && claude --settings \(Self.quoted(settings.path)) --resume \(Self.quoted(claudeSessionID))"
+            return "cd \(Self.quoted(claudeDirectory)) && " + (claude + ["--resume", Self.quoted(claudeSessionID)]).joined(separator: " ")
         }
-        var parts = ["claude", "--settings", Self.quoted(settings.path)]
+        var parts = claude
         if let claudeSessionID {
             let resumable = transcriptPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
             parts += [resumable ? "--resume" : "--session-id", Self.quoted(claudeSessionID)]

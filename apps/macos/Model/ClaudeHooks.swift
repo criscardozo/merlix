@@ -11,6 +11,10 @@ struct HookEvent {
     let notificationType: String?
     let message: String?
     let toolName: String?
+    /// Where Claude runs; tells a shell session which folder to resume in.
+    let cwd: String?
+    /// SessionEnd's reason ("clear" when /clear starts a new conversation).
+    let reason: String?
     /// What the tool call is about, for a notification: the question and its
     /// options, the command, the file or the URL.
     let detail: String?
@@ -41,12 +45,18 @@ final class ClaudeHooks {
     private init() {
         Self.removeStaleFiles()
         guard let port = listen() else { return }
+        self.port = port
         settingsURL = writeSettings(port: port)
     }
 
-    /// Environment for a terminal so its hooks identify themselves.
+    private var port: UInt16?
+
+    /// Environment for a terminal so its hooks identify themselves. The port is
+    /// for the global hook script (ClaudeHookInstaller), which reads it from here.
     func environment(for sessionID: UUID) -> [String: String] {
-        ["MERLIX_SESSION_ID": sessionID.uuidString, "MERLIX_HOOK_TOKEN": token]
+        var environment = ["MERLIX_SESSION_ID": sessionID.uuidString, "MERLIX_HOOK_TOKEN": token]
+        if let port { environment["MERLIX_HOOK_PORT"] = String(port) }
+        return environment
     }
 
     func removeSettings() {
@@ -172,6 +182,8 @@ final class ClaudeHooks {
             notificationType: json["notification_type"] as? String,
             message: json["message"] as? String,
             toolName: json["tool_name"] as? String,
+            cwd: json["cwd"] as? String,
+            reason: json["reason"] as? String,
             detail: Self.describe(tool: json["tool_name"] as? String, input: json["tool_input"] as? [String: Any])))
     }
 

@@ -429,7 +429,8 @@ final class Workspace {
             }
         case .title(let title):
             session?.title = title
-            if let session, view === session.surfaceView, !session.isClaude {
+            // Without hooks, the title is the only sign of a Claude typed by hand.
+            if let session, view === session.surfaceView, !session.isClaude, !session.hooksActive {
                 followHandStartedClaude(in: session, title: title)
             }
         case .pwd(let pwd):
@@ -539,12 +540,28 @@ final class Workspace {
     private func handle(_ event: HookEvent) {
         guard let session = sessions.first(where: { $0.id == event.sessionID }) else { return }
         session.hooksActive = true
+        // A Claude typed by hand in a shell session ended (not /clear, which
+        // starts another conversation right away): the shell is back.
+        if event.name == "SessionEnd" {
+            if !session.isClaude, event.reason != "clear" {
+                session.claudeSessionID = nil
+                session.transcriptPath = nil
+                session.claudeDirectory = nil
+                save()
+            }
+            set(session, to: .idle)
+            return
+        }
         // /clear starts a new Claude session in the same terminal; follow it.
-        if let id = event.claudeSessionID, id != session.claudeSessionID || event.transcriptPath != session.transcriptPath {
+        let directory = session.isClaude ? session.claudeDirectory : (event.cwd ?? session.claudeDirectory)
+        if let id = event.claudeSessionID,
+           id != session.claudeSessionID || event.transcriptPath != session.transcriptPath || directory != session.claudeDirectory {
             session.claudeSessionID = id
             session.transcriptPath = event.transcriptPath
+            session.claudeDirectory = directory
             save()
         }
+        if event.name == "SessionStart" { return }
 
         switch event.name {
         case "PreToolUse" where event.toolName == "AskUserQuestion":

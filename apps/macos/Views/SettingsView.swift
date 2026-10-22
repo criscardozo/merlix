@@ -176,9 +176,38 @@ private struct TerminalPane: View {
 /// What Merlix may need from macOS, whether it has it, and a way to ask again.
 private struct PermissionsPane: View {
     @State private var notifications: UNAuthorizationStatus?
+    @State private var hooksInstalled = ClaudeHookInstaller.isInstalled
+    @State private var hookError: String?
 
     var body: some View {
         Form {
+            Section {
+                LabeledContent {
+                    HStack(spacing: 10) {
+                        if hooksInstalled {
+                            Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Button("Remove") { change(ClaudeHookInstaller.uninstall) }
+                        } else {
+                            Label("Not installed", systemImage: "circle.dashed").foregroundStyle(.secondary)
+                            Button("Install") { change(ClaudeHookInstaller.install) }
+                        }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Claude Code hooks")
+                        Text("Lets any claude in a Merlix terminal report its status and conversation, including one typed by hand.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Claude Code")
+            } footer: {
+                Text(hookError ?? "Adds entries to ~/.claude/settings.json, next to your own hooks, after saving a backup beside it. They run ~/.merlix/claude-hook.sh, which does nothing outside Merlix. Remove takes out only Merlix's entries.")
+                    .foregroundStyle(hookError == nil ? .secondary : Color.red)
+                    .font(.footnote)
+            }
+
             Section {
                 LabeledContent {
                     HStack(spacing: 10) {
@@ -201,7 +230,7 @@ private struct PermissionsPane: View {
                     }
                 }
             } header: {
-                Text("Permissions")
+                Text("macOS")
             } footer: {
                 Text("macOS asks only once. After that, changes are made in System Settings.")
                     .foregroundStyle(.secondary)
@@ -229,6 +258,16 @@ private struct PermissionsPane: View {
         default:
             ProgressView().controlSize(.small)
         }
+    }
+
+    private func change(_ action: () throws -> Void) {
+        do {
+            try action()
+            hookError = nil
+        } catch {
+            hookError = error.localizedDescription
+        }
+        hooksInstalled = ClaudeHookInstaller.isInstalled
     }
 
     private func refresh() async {
