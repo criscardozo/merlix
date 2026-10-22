@@ -225,6 +225,14 @@ struct ProjectSheet: View {
         panel.allowedContentTypes = [.image]
         panel.directoryURL = URL(filePath: draft.project.path)
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Some image types, such as an Icon Composer .icon, are folders NSImage cannot draw.
+        guard NSImage(contentsOf: url) != nil else {
+            let alert = NSAlert()
+            alert.messageText = "Merlix can't show “\(url.lastPathComponent)”"
+            alert.informativeText = "Choose a PNG, JPEG, SVG or ICNS file."
+            alert.runModal()
+            return
+        }
         draft.pickedImage = url
         draft.project.usesInitials = nil
     }
