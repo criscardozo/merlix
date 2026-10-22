@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.build-ghostty.log
+Merlix.xcodeproj/
+apps/macos/Info.plist
+xcuserdata/
+
+# Internal notes, references and mock tooling; not part of the public repo
+.internal/
+CLAUDE.md
+.claude/

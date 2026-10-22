@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g fill="#F2C94C">
+    <path d="M330 580 Q402 506 474 580 Q402 654 330 580 Z"/>
+    <path d="M550 580 Q622 506 694 580 Q622 654 550 580 Z"/>
+  </g>
+  <g fill="#141217">
+    <ellipse cx="402" cy="580" rx="11" ry="34"/>
+    <ellipse cx="622" cy="580" rx="11" ry="34"/>
+  </g>
+</svg>
