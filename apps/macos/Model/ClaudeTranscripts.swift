@@ -13,7 +13,11 @@ struct ClaudeConversation: Identifiable, Hashable, Sendable {
 nonisolated enum ClaudeTranscripts {
     static func directory(for folder: String) -> URL {
         // Claude names the directory after the real path (/tmp is /private/tmp).
-        let real = URL(filePath: folder).resolvingSymlinksInPath().path(percentEncoded: false)
+        // URL.resolvingSymlinksInPath strips /private instead, so use realpath.
+        let real = realpath(folder, nil).map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        } ?? folder
         let trimmed = real.hasSuffix("/") && real.count > 1 ? String(real.dropLast()) : real
         let encoded = String(trimmed.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "-" })
         return URL.homeDirectory.appending(path: ".claude/projects/\(encoded)", directoryHint: .isDirectory)

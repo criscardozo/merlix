@@ -57,6 +57,12 @@ final class Session: Identifiable {
     /// Claude Code's own session, learnt from its hooks; used to resume it.
     var claudeSessionID: String?
     var transcriptPath: String?
+    /// Where Claude runs when it was started by hand in a shell session, so a
+    /// restart can go back there and resume it.
+    var claudeDirectory: String?
+    @ObservationIgnored var lastTranscriptScan: Date?
+    /// Claude's title has shown in this run; a shell title after it means Claude exited.
+    @ObservationIgnored var handClaudeRunning = false
     /// Hooks reported for this terminal, so they decide the status instead of
     /// the terminal's progress reports and notifications.
     var hooksActive = false
@@ -76,7 +82,7 @@ final class Session: Identifiable {
 
     init(
         id: UUID = UUID(), projectID: UUID, name: String, command: String, lastActivity: Date = .now,
-        claudeSessionID: String? = nil, transcriptPath: String? = nil
+        claudeSessionID: String? = nil, transcriptPath: String? = nil, claudeDirectory: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -85,6 +91,7 @@ final class Session: Identifiable {
         self.lastActivity = lastActivity
         self.claudeSessionID = claudeSessionID
         self.transcriptPath = transcriptPath
+        self.claudeDirectory = claudeDirectory
     }
 
     var isClaude: Bool { command == "claude" }
@@ -93,7 +100,13 @@ final class Session: Identifiable {
     /// conversation id chosen up front (`claudeSessionID`, set by Workspace.start):
     /// resumed when its transcript exists, otherwise started under that id.
     var startCommand: String {
-        guard isClaude, let settings = ClaudeHooks.shared.settingsURL else { return command }
+        guard let settings = ClaudeHooks.shared.settingsURL else { return command }
+        guard isClaude else {
+            // A shell where Claude was running by hand: go back to its folder and resume it.
+            guard let claudeSessionID, let claudeDirectory, let transcriptPath,
+                  FileManager.default.fileExists(atPath: transcriptPath) else { return command }
+            return "cd \(Self.quoted(claudeDirectory)) && claude --settings \(Self.quoted(settings.path)) --resume \(Self.quoted(claudeSessionID))"
+        }
         var parts = ["claude", "--settings", Self.quoted(settings.path)]
         if let claudeSessionID {
             let resumable = transcriptPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
@@ -104,6 +117,13 @@ final class Session: Identifiable {
 
     private static func quoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    /// Claude Code prefixes the terminal title with "✳" when idle and a braille
+    /// spinner while working; shells do not.
+    static func isClaudeTitle(_ title: String) -> Bool {
+        guard let first = title.unicodeScalars.first else { return false }
+        return first == "✳" || (0x2800...0x28FF).contains(first.value)
     }
 
     var displayName: String {

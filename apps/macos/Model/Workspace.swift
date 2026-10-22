@@ -360,7 +360,7 @@ final class Workspace {
         let surface = TerminalSurfaceView(
             sessionID: session.id,
             workingDirectory: project.path,
-            initialInput: session.command.isEmpty ? nil : "clear && \(session.startCommand)\n",
+            initialInput: session.startCommand.isEmpty ? nil : "clear && \(session.startCommand)\n",
             environment: ClaudeHooks.shared.environment(for: session.id))
         session.surfaceView = surface
         session.paneHost = PaneHost(surface)
@@ -429,8 +429,11 @@ final class Workspace {
             }
         case .title(let title):
             session?.title = title
+            if let session, view === session.surfaceView, !session.isClaude {
+                followHandStartedClaude(in: session, title: title)
+            }
         case .pwd(let pwd):
-            session?.pwd = pwd
+            if let session, view === session.surfaceView { session.pwd = pwd }
         case .progress(let progress):
             guard let session else { return }
             apply(progress, to: session)
@@ -494,6 +497,40 @@ final class Workspace {
             // does clear the progress report.
             guard session.status == .working else { return }
             set(session, to: .done)
+        }
+    }
+
+    // MARK: Claude started by hand
+
+    /// In a shell session, a Claude typed by hand has no hooks. Its title gives
+    /// it away, and the newest transcript in the shell's folder is its
+    /// conversation, which a restart then resumes. Leaving Claude forgets it.
+    private func followHandStartedClaude(in session: Session, title: String) {
+        guard Session.isClaudeTitle(title) else {
+            // Before Claude starts the shell has its own title too; only a shell
+            // title after Claude's means it exited.
+            if session.handClaudeRunning {
+                session.handClaudeRunning = false
+                session.claudeDirectory = nil
+                session.claudeSessionID = nil
+                session.transcriptPath = nil
+                save()
+            }
+            return
+        }
+        session.handClaudeRunning = true
+        // The title changes several times a second while Claude works.
+        if let last = session.lastTranscriptScan, Date.now.timeIntervalSince(last) < 15 { return }
+        session.lastTranscriptScan = .now
+        guard let folder = session.pwd ?? project(for: session)?.path else { return }
+        Task {
+            let found = await Task.detached { ClaudeTranscripts.conversations(in: folder, limit: 1).first }.value
+            guard let found, Date.now.timeIntervalSince(found.modified) < 300,
+                  found.id != session.claudeSessionID || session.claudeDirectory != folder else { return }
+            session.claudeSessionID = found.id
+            session.transcriptPath = found.transcriptPath
+            session.claudeDirectory = folder
+            save()
         }
     }
 
@@ -584,6 +621,7 @@ final class Workspace {
             var lastActivity: Date?
             var claudeSessionID: String?
             var transcriptPath: String?
+            var claudeDirectory: String?
         }
 
         var projects: [Project]
@@ -615,7 +653,8 @@ final class Workspace {
             return Session(
                 id: record.id, projectID: record.projectID, name: record.name, command: record.command,
                 lastActivity: record.lastActivity ?? .now,
-                claudeSessionID: record.claudeSessionID, transcriptPath: record.transcriptPath)
+                claudeSessionID: record.claudeSessionID, transcriptPath: record.transcriptPath,
+                claudeDirectory: record.claudeDirectory)
         }
         select(snapshot.selectedSessionID ?? orderedSessions.first?.id)
     }
@@ -627,7 +666,8 @@ final class Workspace {
             sessions: orderedSessions.map {
                 .init(
                     id: $0.id, projectID: $0.projectID, name: $0.name, command: $0.command,
-                    lastActivity: $0.lastActivity, claudeSessionID: $0.claudeSessionID, transcriptPath: $0.transcriptPath)
+                    lastActivity: $0.lastActivity, claudeSessionID: $0.claudeSessionID, transcriptPath: $0.transcriptPath,
+                    claudeDirectory: $0.claudeDirectory)
             },
             selectedSessionID: selectedSessionID)
         do {
