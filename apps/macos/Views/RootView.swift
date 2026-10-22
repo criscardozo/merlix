@@ -141,7 +141,11 @@ private struct DetailCard: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("No sessions", systemImage: "terminal")
+            VStack(spacing: 14) {
+                CatFace()
+                    .frame(width: 92, height: 92)
+                Text("No sessions")
+            }
         } description: {
             Text("Add a project folder to start a Claude Code session in it.")
         } actions: {
