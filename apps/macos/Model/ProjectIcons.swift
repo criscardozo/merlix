@@ -85,10 +85,22 @@ final class ProjectIcons {
     }
 
     /// The largest PNG in the first AppIcon.appiconset a few levels down.
+    /// Never walks the home folder or the disk root: that reaches folders
+    /// macOS protects, such as the Photos library, and asks for access.
     private static func xcodeAppIcon(in root: URL) -> URL? {
-        let skip: Set<String> = ["node_modules", ".git", "build", ".build", "DerivedData", "Pods", "dist", ".next"]
+        func trimmed(_ url: URL) -> String {
+            let path = url.standardizedFileURL.path(percentEncoded: false)
+            return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        }
+        let path = trimmed(root)
+        guard path != trimmed(URL.homeDirectory), path != "/" else { return nil }
+        let skip: Set<String> = [
+            "node_modules", ".git", "build", ".build", "DerivedData", "Pods", "dist", ".next",
+            "Library", "Pictures", "Movies", "Music",
+        ]
         guard let walker = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+            at: root, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return nil }
         for case let url as URL in walker {
             if walker.level > 4 || skip.contains(url.lastPathComponent) {
