@@ -5,6 +5,7 @@ struct MerlixApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        Self.migratePreferences()
         // Launched from inside Claude Code (`! make run`), Merlix inherits that
         // session's variables, and every Claude started here would think it is a
         // child of it and stop saving transcripts. Shells re-read the user's own
@@ -15,6 +16,23 @@ struct MerlixApp: App {
                 unsetenv(key)
             }
         }
+    }
+
+    /// The app's identifier changed from dev.cristian.merlix to dev.cardozo.merlix
+    /// (2026-10-23). Its preferences are copied over once, so the layout, font
+    /// and window size carry across.
+    private static func migratePreferences() {
+        let defaults = UserDefaults.standard
+        let marker = "migratedFromDevCristian"
+        guard defaults === UserDefaults.merlix, !defaults.bool(forKey: marker) else { return }
+        let old = "dev.cristian.merlix" as CFString
+        let keys = CFPreferencesCopyKeyList(old, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String] ?? []
+        for key in keys where defaults.object(forKey: key) == nil {
+            if let value = CFPreferencesCopyAppValue(key as CFString, old) {
+                defaults.set(value, forKey: key)
+            }
+        }
+        defaults.set(true, forKey: marker)
     }
 
     var body: some Scene {

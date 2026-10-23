@@ -2,7 +2,7 @@ import AppKit
 import GhosttyKit
 import OSLog
 
-nonisolated let logger = Logger(subsystem: "dev.cristian.merlix", category: "ghostty")
+nonisolated let logger = Logger(subsystem: "dev.cardozo.merlix", category: "ghostty")
 
 /// What a terminal surface reports to the rest of the app. libghostty actions are
 /// translated into these so nothing outside `Ghostty/` touches the C API.

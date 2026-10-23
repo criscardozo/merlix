@@ -22,7 +22,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static func openSystemSettings() {
-        let id = Bundle.main.bundleIdentifier ?? "dev.cristian.merlix"
+        let id = Bundle.main.bundleIdentifier ?? "dev.cardozo.merlix"
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
             NSWorkspace.shared.open(url)
         }

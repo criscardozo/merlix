@@ -1,6 +1,6 @@
 name: Merlix
 options:
-  bundleIdPrefix: dev.cristian
+  bundleIdPrefix: dev.cardozo
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
@@ -48,11 +48,14 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Merlix
-        PRODUCT_BUNDLE_IDENTIFIER: dev.cristian.merlix
+        PRODUCT_BUNDLE_IDENTIFIER: dev.cardozo.merlix
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "2"
-        # Sign to run locally. A terminal must spawn arbitrary shells, so no sandbox.
-        CODE_SIGN_IDENTITY: "-"
+        # Signed with the personal team so macOS keeps its permissions (App
+        # Management, notifications) across rebuilds; an ad hoc signature changes
+        # every build. A terminal must spawn arbitrary shells, so no sandbox.
+        DEVELOPMENT_TEAM: FA737M2U79
+        CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Manual
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO

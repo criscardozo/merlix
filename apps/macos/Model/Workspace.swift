@@ -750,5 +750,5 @@ extension UserDefaults {
     nonisolated(unsafe) static let merlix: UserDefaults =
         ProcessInfo.processInfo.environment["MERLIX_WORKSPACE"] == nil
             ? .standard
-            : UserDefaults(suiteName: "dev.cristian.merlix.test") ?? .standard
+            : UserDefaults(suiteName: "dev.cardozo.merlix.test") ?? .standard
 }
