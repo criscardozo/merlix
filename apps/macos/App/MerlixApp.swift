@@ -106,9 +106,9 @@ struct MerlixCommands: Commands {
         CommandGroup(replacing: .saveItem) {
             // ⌘W closes the session even when the terminal does not have focus,
             // instead of closing the only window and quitting.
-            Button("Save File") { try? ProjectFiles.shared.openFile?.save() }
+            Button("Save File") { try? ProjectFiles.shared.currentFile?.save() }
                 .keyboardShortcut("s")
-                .disabled(ProjectFiles.shared.openFile?.isDirty != true)
+                .disabled(ProjectFiles.shared.currentFile?.isDirty != true)
             Button("Close") { Workspace.shared.closeSelectedSession() }
                 .keyboardShortcut("w")
         }

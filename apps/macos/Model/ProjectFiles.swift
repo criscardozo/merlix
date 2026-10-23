@@ -68,6 +68,10 @@ final class ProjectFiles {
     private(set) var nodes: [FileNode] = []
     private(set) var loading = false
     var openFile: EditedFile?
+    /// Files opened in tabs over the terminal, per project folder.
+    private(set) var tabs: [String: [EditedFile]] = [:]
+    /// The tab each project's card shows; no entry means the terminal.
+    var activeTab: [String: URL] = [:]
     /// Why the last file could not be opened (binary, too large).
     var openError: String?
 
@@ -88,6 +92,11 @@ final class ProjectFiles {
         nodes = []
         openFile = path.flatMap { buffers[$0] }
         openError = nil
+        // Changes made while this project was not being watched.
+        if let path {
+            for file in tabs[path] ?? [] { file.diskChanged() }
+            openFile?.diskChanged()
+        }
         guard let path else { return }
         refresh()
         watch(path)
@@ -125,8 +134,64 @@ final class ProjectFiles {
 
     /// Open files with edits not yet saved, in any project.
     var unsavedFiles: [EditedFile] {
-        (Array(buffers.values) + [openFile].compactMap { $0 }).filter(\.isDirty)
+        (Array(buffers.values) + [openFile].compactMap { $0 } + tabs.values.flatMap { $0 }).filter(\.isDirty)
             .reduce(into: [EditedFile]()) { list, file in if !list.contains(where: { $0 === file }) { list.append(file) } }
+    }
+
+    // MARK: Tabs
+
+    func activeFile(in root: String) -> EditedFile? {
+        guard let url = activeTab[root] else { return nil }
+        return tabs[root]?.first { $0.url == url }
+    }
+
+    /// The file ⌘S saves: the tab on show, else the one in the panel.
+    var currentFile: EditedFile? {
+        root.flatMap { activeFile(in: $0) } ?? openFile
+    }
+
+    /// Moves `file` from the panel into a tab of the current project (or
+    /// focuses its tab if it already has one), keeping any unsaved edits.
+    func openInTab(_ file: EditedFile) {
+        guard let root else { return }
+        if openFile === file { openFile = nil }
+        var list = tabs[root] ?? []
+        if let existing = list.first(where: { $0.url == file.url }) {
+            if file.isDirty, !existing.isDirty { existing.text = file.text }
+        } else {
+            list.append(file)
+        }
+        tabs[root] = list
+        activeTab[root] = file.url
+    }
+
+    func openInTab(path: String) {
+        if let existing = root.flatMap({ tabs[$0] })?.first(where: { $0.url.path(percentEncoded: false) == path }) {
+            openInTab(existing)
+            return
+        }
+        open(path)
+        if let file = openFile { openInTab(file) }
+    }
+
+    func closeTab(_ file: EditedFile, in root: String) {
+        tabs[root]?.removeAll { $0 === file }
+        if activeTab[root] == file.url { activeTab[root] = nil }
+    }
+
+    /// Creates an empty file at `name` (which may include folders) inside
+    /// `folder`, and returns its path.
+    func createFile(named name: String, in folder: String) throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty, !trimmed.split(separator: "/").contains("..") else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        let url = URL(filePath: folder, directoryHint: .isDirectory).appending(path: trimmed)
+        guard !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteFileExists) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: url, options: .withoutOverwriting)
+        refresh()
+        return url.path(percentEncoded: false)
     }
 
     // MARK: Listing
@@ -252,8 +317,9 @@ final class ProjectFiles {
         // .git churns on every command; its changes do not alter the tree.
         let relevant = paths.filter { !$0.contains("/.git/") }
         guard !relevant.isEmpty else { return }
-        if let openFile, relevant.contains(openFile.url.path(percentEncoded: false)) {
-            openFile.diskChanged()
+        let open = [openFile].compactMap { $0 } + (root.flatMap { tabs[$0] } ?? [])
+        for file in open where relevant.contains(file.url.path(percentEncoded: false)) {
+            file.diskChanged()
         }
         refresh()
     }

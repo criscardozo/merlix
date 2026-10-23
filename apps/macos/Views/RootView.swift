@@ -70,6 +70,10 @@ struct RootView: View {
         .navigationTitle("Merlix")
         .background(WindowConfigurator())
         .onChange(of: workspace.settingsRequest) { openSettings() }
+        // Files follow the selected project even with the panel closed: its tabs live in the card.
+        .task(id: workspace.selectedSession.flatMap { workspace.project(for: $0) }?.path) {
+            ProjectFiles.shared.show(workspace.selectedSession.flatMap { workspace.project(for: $0) }?.path)
+        }
         .sheet(item: $workspace.projectDraft) { draft in
             ProjectSheet(draft: draft)
         }
@@ -135,7 +139,23 @@ private struct DetailCard: View {
             Rectangle()
                 .fill(.separator)
                 .frame(height: 1)
-            if let session = workspace.selectedSession {
+            let root = workspace.selectedSession.flatMap { workspace.project(for: $0) }?.path
+            let files = ProjectFiles.shared
+            if let root, !(files.tabs[root] ?? []).isEmpty {
+                FileTabStrip(root: root)
+                    .frame(height: 30)
+                    .background(fill)
+                Rectangle()
+                    .fill(.separator)
+                    .frame(height: 1)
+            }
+            if let root, let file = files.activeFile(in: root) {
+                VStack(spacing: 0) {
+                    if file.changedOnDisk { ChangedOnDiskBar(file: file) }
+                    CodeEditor(file: file, background: background, lineNumbers: true)
+                }
+                .background(fill)
+            } else if let session = workspace.selectedSession {
                 TerminalHost(session: session)
                     .overlay(alignment: .topTrailing) {
                         if let search = session.search {
