@@ -12,6 +12,8 @@ struct RootView: View {
     @AppStorage("sidebarVisible", store: .merlix) private var sidebarVisible = true
     @AppStorage("sidebarWidth", store: .merlix) private var sidebarWidth = 260.0
     @AppStorage(HiddenSidebarStyle.key, store: .merlix) private var hiddenStyle = HiddenSidebarStyle.focus.rawValue
+    @AppStorage("filesVisible", store: .merlix) private var filesVisible = false
+    @AppStorage("filesWidth", store: .merlix) private var filesWidth = 440.0
 
     var body: some View {
         @Bindable var workspace = workspace
@@ -26,8 +28,21 @@ struct RootView: View {
             // Without the sidebar the card fills the window and its header
             // becomes the title bar.
             DetailCard(flush: !sidebarVisible, tabs: !sidebarVisible && hiddenStyle == HiddenSidebarStyle.tabs.rawValue)
-                .padding(sidebarVisible ? EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 8) : EdgeInsets())
+                .padding(sidebarVisible ? EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: filesVisible ? 0 : 8) : EdgeInsets())
+            if filesVisible {
+                FilesPanel()
+                    .frame(width: filesWidth)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .overlay(alignment: .topTrailing) {
+            if filesVisible {
+                SidebarResizeHandle(width: $filesWidth, range: 300...900, growsLeftward: true)
+                    .padding(.top, titleBarHeight)
+                    .offset(x: -filesWidth + 5)
+            }
+        }
+        .animation(.smooth(duration: 0.25), value: filesVisible)
         .overlay(alignment: .topLeading) {
             // Always beside the traffic lights, whether or not the sidebar shows.
             HStack(spacing: 2) {
@@ -104,12 +119,14 @@ private struct DetailCard: View {
         let shape = RoundedRectangle(cornerRadius: flush ? 0 : 10, style: .continuous)
 
         VStack(spacing: 0) {
-            Group {
+            HStack(spacing: 0) {
                 if tabs {
                     SessionTabs()
                 } else {
                     CardHeader(session: workspace.selectedSession)
                 }
+                FilesToggle()
+                    .padding(.trailing, 10)
             }
                 // Flush, the header is the title bar: leave room for the traffic lights and controls.
                 .padding(.leading, flush ? trafficLightsWidth + 56 : 0)
@@ -262,8 +279,30 @@ struct AddMenuItems: View {
 }
 
 /// A thin strip on the sidebar's trailing edge that resizes it.
+/// Shows or hides the files panel on the right.
+struct FilesToggle: View {
+    @AppStorage("filesVisible", store: .merlix) private var filesVisible = false
+
+    var body: some View {
+        Button {
+            filesVisible.toggle()
+        } label: {
+            Image(systemName: "sidebar.right")
+                .frame(width: 26, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 14))
+        .foregroundStyle(filesVisible ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+        .help(filesVisible ? "Hide Files (⌥⌘B)" : "Show Files (⌥⌘B)")
+    }
+}
+
 private struct SidebarResizeHandle: View {
     @Binding var width: Double
+    var range: ClosedRange<Double> = 200...420
+    /// For a panel on the right, dragging left makes it wider.
+    var growsLeftward = false
     @State private var startWidth: Double?
 
     var body: some View {
@@ -279,7 +318,8 @@ private struct SidebarResizeHandle: View {
                     .onChanged { value in
                         let start = startWidth ?? width
                         startWidth = start
-                        width = min(420, max(200, start + value.translation.width))
+                        let delta = growsLeftward ? -value.translation.width : value.translation.width
+                        width = min(range.upperBound, max(range.lowerBound, start + delta))
                     }
                     .onEnded { _ in startWidth = nil })
     }

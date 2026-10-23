@@ -48,6 +48,25 @@ nonisolated struct TerminalBackground: Sendable, Equatable {
     var green: Double
     var blue: Double
     var opacity: Double
+    /// The theme's text colour and its 16 ANSI colours, for the file editor.
+    var foreground = TerminalColor(red: 0.85, green: 0.85, blue: 0.85)
+    var palette: [TerminalColor] = []
+}
+
+nonisolated struct TerminalColor: Sendable, Equatable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    fileprivate init(_ color: ghostty_config_color_s) {
+        self.init(red: Double(color.r) / 255, green: Double(color.g) / 255, blue: Double(color.b) / 255)
+    }
 }
 
 /// A libghostty action decoded off the C structs, safe to hand to the main actor.
@@ -116,9 +135,18 @@ final class GhosttyRuntime {
         let opacityKey = "background-opacity"
         _ = ghostty_config_get(config, &color, colorKey, UInt(colorKey.utf8.count))
         _ = ghostty_config_get(config, &opacity, opacityKey, UInt(opacityKey.utf8.count))
+        var foreground = ghostty_config_color_s(r: 217, g: 217, b: 217)
+        let foregroundKey = "foreground"
+        _ = ghostty_config_get(config, &foreground, foregroundKey, UInt(foregroundKey.utf8.count))
+        var palette = ghostty_config_palette_s()
+        let paletteKey = "palette"
+        _ = ghostty_config_get(config, &palette, paletteKey, UInt(paletteKey.utf8.count))
+        let ansi = withUnsafeBytes(of: palette.colors) { raw in
+            Array(raw.bindMemory(to: ghostty_config_color_s.self).prefix(16)).map(TerminalColor.init)
+        }
         return TerminalBackground(
             red: Double(color.r) / 255, green: Double(color.g) / 255, blue: Double(color.b) / 255,
-            opacity: opacity)
+            opacity: opacity, foreground: TerminalColor(foreground), palette: ansi)
     }
 
     var needsConfirmQuit: Bool {

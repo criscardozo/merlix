@@ -48,6 +48,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let unsaved = ProjectFiles.shared.unsavedFiles
+        if !unsaved.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = unsaved.count == 1
+                ? "Save changes to “\(unsaved[0].url.lastPathComponent)” before quitting?"
+                : "Save changes to \(unsaved.count) files before quitting?"
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Don't Save")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                for file in unsaved { try? file.save() }
+            case .alertSecondButtonReturn:
+                return .terminateCancel
+            default:
+                break
+            }
+        }
         guard GhosttyRuntime.shared.needsConfirmQuit else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Quit Merlix?"
@@ -73,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MerlixCommands: Commands {
     @AppStorage("sidebarVisible", store: .merlix) private var sidebarVisible = true
+    @AppStorage("filesVisible", store: .merlix) private var filesVisible = false
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
@@ -81,10 +100,15 @@ struct MerlixCommands: Commands {
         CommandGroup(replacing: .sidebar) {
             Button(sidebarVisible ? "Hide Sidebar" : "Show Sidebar") { sidebarVisible.toggle() }
                 .keyboardShortcut("s", modifiers: [.command, .control])
+            Button(filesVisible ? "Hide Files" : "Show Files") { filesVisible.toggle() }
+                .keyboardShortcut("b", modifiers: [.command, .option])
         }
         CommandGroup(replacing: .saveItem) {
             // ⌘W closes the session even when the terminal does not have focus,
             // instead of closing the only window and quitting.
+            Button("Save File") { try? ProjectFiles.shared.openFile?.save() }
+                .keyboardShortcut("s")
+                .disabled(ProjectFiles.shared.openFile?.isDirty != true)
             Button("Close") { Workspace.shared.closeSelectedSession() }
                 .keyboardShortcut("w")
         }
