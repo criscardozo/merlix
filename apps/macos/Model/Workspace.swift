@@ -454,6 +454,8 @@ final class Workspace {
         case .focused:
             session?.unread = false
             session?.focusedSurface = view
+        case .openLink(let text):
+            openLink(text, from: session)
         case .commandPalette:
             paletteVisible.toggle()
         case .openSettings:
@@ -498,6 +500,45 @@ final class Workspace {
             // does clear the progress report.
             guard session.status == .working else { return }
             set(session, to: .done)
+        }
+    }
+
+    // MARK: Links
+
+    /// ⌘-click on a link in a terminal. URLs go to the browser; a file path,
+    /// relative to where Claude runs in that session (or the project), opens in
+    /// an editor tab at its `:line` if it has one.
+    func openLink(_ text: String, from session: Session?) {
+        // "main.swift:25" parses as a URL with the scheme "main.swift", so only
+        // "scheme://…" and the few schemes without slashes count as URLs.
+        let schemes = ["mailto:", "tel:", "magnet:", "news:"]
+        if !text.hasPrefix("file:"), text.contains("://") || schemes.contains(where: text.hasPrefix),
+           let url = URL(string: text) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        var path = text.hasPrefix("file://") ? (URL(string: text)?.path(percentEncoded: false) ?? text) : text
+        var line: Int?
+        if let match = path.firstMatch(of: /:(\d+)(?::\d+)?$/) {
+            line = Int(match.1)
+            path = String(path[..<match.range.lowerBound])
+        }
+        path = (path as NSString).expandingTildeInPath
+        let project = session.flatMap { self.project(for: $0) }?.path
+        let bases = [session?.claudeDirectory, session?.pwd, project].compactMap { $0 }
+        let candidates = path.hasPrefix("/") ? [path] : bases.map { ($0 as NSString).appendingPathComponent(path) }
+        var isDirectory: ObjCBool = false
+        guard let found = candidates.map({ ($0 as NSString).standardizingPath })
+            .first(where: { FileManager.default.fileExists(atPath: $0, isDirectory: &isDirectory) })
+        else {
+            NSSound.beep()
+            return
+        }
+        if isDirectory.boolValue {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: found)])
+        } else if !ProjectFiles.shared.openInTab(path: found, line: line) {
+            // Images and other binaries: their own app.
+            NSWorkspace.shared.open(URL(filePath: found))
         }
     }
 

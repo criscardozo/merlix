@@ -13,6 +13,8 @@ nonisolated enum TerminalEvent: Sendable {
     case notification(title: String, body: String)
     case bell
     case userInput
+    /// ⌘-click on a link Ghostty found: a URL, or a file path from the output.
+    case openLink(String)
     case focused
     case newSession
     case gotoSession(Int32)
@@ -429,7 +431,11 @@ final class GhosttyRuntime {
         case .cellSize(let size):
             view?.cellSize = size
         case .openURL(let string):
-            NSWorkspace.shared.open(URL(string: string) ?? URL(filePath: string))
+            if let view {
+                view.emit(.openLink(string))
+            } else if let url = URL(string: string) {
+                NSWorkspace.shared.open(url)
+            }
         case .openConfig:
             // Ghostty's ⌘, opens Merlix's Settings rather than Ghostty's config file.
             eventHandler?(.openSettings, view)

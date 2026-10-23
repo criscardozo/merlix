@@ -22,6 +22,8 @@ final class EditedFile {
     private(set) var revision = 0
     /// The file changed on disk while it had unsaved edits.
     var changedOnDisk = false
+    /// A line the editor should scroll to and select, once.
+    var revealLine: Int?
 
     var isDirty: Bool { text != savedText }
 
@@ -165,13 +167,20 @@ final class ProjectFiles {
         activeTab[root] = file.url
     }
 
-    func openInTab(path: String) {
+    /// Returns false when the file cannot be shown as text.
+    @discardableResult
+    func openInTab(path: String, line: Int? = nil) -> Bool {
         if let existing = root.flatMap({ tabs[$0] })?.first(where: { $0.url.path(percentEncoded: false) == path }) {
+            existing.revealLine = line
             openInTab(existing)
-            return
+            return true
         }
+        let previous = openFile
         open(path)
-        if let file = openFile { openInTab(file) }
+        guard let file = openFile, file !== previous else { return false }
+        file.revealLine = line
+        openInTab(file)
+        return true
     }
 
     func closeTab(_ file: EditedFile, in root: String) {

@@ -56,6 +56,13 @@ struct CodeEditor: NSViewRepresentable {
             coordinator.file = file
             coordinator.load(background: background)
         }
+        if let line = file.revealLine {
+            // After this update: the view must be laid out to scroll, and state can't change mid-update.
+            DispatchQueue.main.async {
+                coordinator.reveal(line: line)
+                file.revealLine = nil
+            }
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -86,6 +93,23 @@ struct CodeEditor: NSViewRepresentable {
             textView.undoManager?.removeAllActions()
             ruler?.update(colour: Self.colour(background.foreground), font: Self.font)
             if !large { highlight() }
+        }
+
+        /// Selects line `line` (1-based) and scrolls it into the middle of the view.
+        func reveal(line: Int) {
+            guard let textView else { return }
+            let text = textView.string as NSString
+            var location = 0
+            var current = 1
+            while current < line, location < text.length {
+                location = NSMaxRange(text.lineRange(for: NSRange(location: location, length: 0)))
+                current += 1
+            }
+            let range = text.lineRange(for: NSRange(location: min(location, text.length), length: 0))
+            textView.window?.makeFirstResponder(textView)
+            textView.setSelectedRange(NSRange(location: range.location, length: 0))
+            textView.scrollRangeToVisible(range)
+            textView.showFindIndicator(for: range)
         }
 
         func textDidChange(_ notification: Notification) {
