@@ -44,5 +44,7 @@ fi
 
 tar -xf "${tarball}" -C "${tools}"
 rm -f "${tarball}"
+# An interrupted earlier run may have left a folder without zig in it.
+rm -rf "${dest}"
 mv "${tools}/${name}" "${dest}"
 echo "${dest}/zig"

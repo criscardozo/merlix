@@ -40,12 +40,20 @@ It is named after Merlí, a black cat.
 - **Layouts.** A sidebar, tabs across the title bar, or a single focused session.
 - **Terminal comforts.** Splits (⌘D, ⇧⌘D), find (⌘F), a command palette (⇧⌘P), file drop,
   secure input at password prompts, and Look Up.
+- **Files.** A panel with the project's files (⌥⌘B), kept current as Claude changes them,
+  and a small editor with syntax colours from your terminal theme. Files open in the panel
+  or in tabs beside the terminal, with line numbers. ⌘-click a path Claude prints to open
+  it at that line.
 - **Plan usage.** Your Claude 5-hour and weekly usage at the bottom of the sidebar,
   when a status-line usage cache exists at
   `~/.claude/.statusline-usage-cache`.
 
-Nothing in `~/.claude/settings.json` is changed: Merlix starts each Claude session with
-`claude --settings <file>`, and the hooks in that file only exist inside Merlix.
+By default nothing in `~/.claude/settings.json` is changed: Merlix starts each Claude
+session with `claude --settings <file>`, and the hooks in that file only exist inside
+Merlix. To also follow a `claude` you type by hand in a shell, Settings › Permissions can
+install global hooks into `~/.claude/settings.json` (after keeping a dated backup next to
+it). They run `~/.merlix/claude-hook.sh`, which does nothing outside Merlix terminals, and
+Remove takes out only Merlix's entries.
 
 ## Requirements
 
@@ -65,6 +73,10 @@ cd merlix
 make run        # builds GhosttyKit (first time only), generates the project, builds and opens the app
 ```
 
+`project.yml` signs with the author's team so macOS keeps the app's permissions between
+builds. To build it yourself, set `DEVELOPMENT_TEAM` there to your own team, or remove
+`DEVELOPMENT_TEAM`, `CODE_SIGN_IDENTITY` and `CODE_SIGN_STYLE` for an ad hoc signature.
+
 | Target | What it does |
 |---|---|
 | `make build` | Debug build in `.build/xcode` |
@@ -79,7 +91,7 @@ it until the submodule changes.
 
 ## Customising
 
-- **Settings (⌘,):** layout, terminal font and size, and permissions.
+- **Settings (⌘,):** layout, terminal font and size, notifications and Claude Code hooks.
 - **`~/Library/Application Support/Merlix/ghostty.conf`:** any Ghostty setting, applied to
   Merlix only, on top of your Ghostty config. Reload with ⇧⌘, or from the command palette.
 
@@ -89,8 +101,8 @@ it until the submodule changes.
 |---|---|
 | `apps/macos/App/` | App entry point, menus, notifications |
 | `apps/macos/Ghostty/` | The only code that touches the libghostty C API: runtime, surface view, clipboard, secure input |
-| `apps/macos/Model/` | Projects, sessions, status rules, the Claude hooks listener, transcripts, icons, usage, persistence |
-| `apps/macos/Views/` | Sidebar, terminal card, panes, tabs, find bar, command palette, settings |
+| `apps/macos/Model/` | Projects, sessions, status rules, the Claude hooks listener and installer, transcripts, project files, syntax colours, icons, usage, persistence |
+| `apps/macos/Views/` | Sidebar, terminal card, panes, tabs, files panel and editor, find bar, command palette, settings |
 | `apps/macos/Resources/` | The app icon (Icon Composer) |
 | `scripts/` | Zig bootstrap, GhosttyKit build, window screenshot |
 | `ThirdParty/ghostty` | Ghostty, pinned to a commit on `main` |
