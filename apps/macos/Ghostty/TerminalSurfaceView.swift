@@ -125,7 +125,12 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         super.viewDidMoveToWindow()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
-        guard let window else { return }
+        guard let window else {
+            // Taken out of the window (another session shown): AppKit does not
+            // always resign first responder, so the surface would stay focused.
+            setFocused(false)
+            return
+        }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
         ) { [weak self] _ in

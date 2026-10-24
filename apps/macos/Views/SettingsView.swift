@@ -272,6 +272,7 @@ private struct PermissionsPane: View {
 
     private func refresh() async {
         notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        hooksInstalled = ClaudeHookInstaller.isInstalled
     }
 }
 
@@ -304,9 +305,14 @@ enum TerminalSettings {
     }
 
     /// The last font-family in the user's Ghostty config, to name the default.
+    /// The last font-family in Ghostty's config files, in the order Ghostty
+    /// loads them (XDG first, then Application Support, which wins).
     static func ghosttyFontFamily() -> String? {
-        let url = URL.applicationSupportDirectory.appending(path: "com.mitchellh.ghostty/config")
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? URL.homeDirectory.appending(path: ".config", directoryHint: .isDirectory)
+        let support = URL.applicationSupportDirectory.appending(path: "com.mitchellh.ghostty", directoryHint: .isDirectory)
+        let files = [xdg.appending(path: "ghostty"), support].flatMap { [$0.appending(path: "config"), $0.appending(path: "config.ghostty")] }
+        let text = files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined(separator: "\n")
         return text.split(separator: "\n").compactMap { line -> String? in
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
             guard parts.count == 2, parts[0] == "font-family" else { return nil }

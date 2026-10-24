@@ -14,6 +14,14 @@ final class Workspace {
     private(set) var sessions: [Session] = []
     private(set) var selectedSessionID: UUID?
     var paletteVisible = false
+
+    /// Hides the palette and gives the keyboard back to the terminal.
+    func closePalette() {
+        paletteVisible = false
+        if let view = selectedSession?.activeSurface {
+            DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        }
+    }
     /// Asks the window for a new group's name; moves `project` into it when set.
     var newGroupPrompt: NewGroupPrompt?
     /// Bumped to ask the window to open Settings, which only SwiftUI can do.
@@ -404,8 +412,11 @@ final class Workspace {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         let next = host.neighbour(of: surface, toward: .previous)
+        let hadFocus = session.focusedSurface === surface
         host.remove(surface)
         surface.destroy()
+        // A pane that exits on its own does not take focus from the one in use.
+        guard hadFocus else { return }
         let focus = next ?? session.surfaceView
         session.focusedSurface = focus
         if let focus { focus.window?.makeFirstResponder(focus) }
@@ -426,6 +437,11 @@ final class Workspace {
             guard let session, let view else { return }
             DispatchQueue.main.async { [weak self] in
                 self?.requestClose(view, in: session, processAlive: processAlive)
+            }
+        case .closeSession:
+            guard let session else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.requestClose(session, processAlive: session.allSurfaces.contains { $0.needsConfirmClose })
             }
         case .title(let title):
             session?.title = title
@@ -567,8 +583,13 @@ final class Workspace {
         guard let folder = session.pwd ?? project(for: session)?.path else { return }
         Task {
             let found = await Task.detached { ClaudeTranscripts.conversations(in: folder, limit: 1).first }.value
-            guard let found, Date.now.timeIntervalSince(found.modified) < 300,
-                  found.id != session.claudeSessionID || session.claudeDirectory != folder else { return }
+            // Claude may have exited during the scan, and a copy of the project
+            // in the same folder may own the newest conversation.
+            guard let found, session.handClaudeRunning, !session.hooksActive,
+                  Date.now.timeIntervalSince(found.modified) < 300,
+                  found.id != session.claudeSessionID || session.claudeDirectory != folder,
+                  !sessions.contains(where: { $0 !== session && $0.claudeSessionID == found.id })
+            else { return }
             session.claudeSessionID = found.id
             session.transcriptPath = found.transcriptPath
             session.claudeDirectory = folder
@@ -581,6 +602,18 @@ final class Workspace {
     private func handle(_ event: HookEvent) {
         guard let session = sessions.first(where: { $0.id == event.sessionID }) else { return }
         session.hooksActive = true
+        if event.name == "SessionStart" {
+            session.sessionStartSeen = true
+            // A fresh `claude` while one is already followed is nested (`claude -p`
+            // from a tool, or one in a split); /clear and /resume switch conversation.
+            guard session.claudeSessionID == nil || event.source == "clear" || event.source == "resume"
+                || event.claudeSessionID == session.claudeSessionID
+            else { return }
+            adopt(event, in: session)
+            return
+        }
+        // Events of another conversation in the same terminal.
+        if session.sessionStartSeen, let id = event.claudeSessionID, id != session.claudeSessionID { return }
         // A Claude typed by hand in a shell session ended (not /clear, which
         // starts another conversation right away): the shell is back.
         if event.name == "SessionEnd" {
@@ -593,16 +626,9 @@ final class Workspace {
             set(session, to: .idle)
             return
         }
-        // /clear starts a new Claude session in the same terminal; follow it.
-        let directory = session.isClaude ? session.claudeDirectory : (event.cwd ?? session.claudeDirectory)
-        if let id = event.claudeSessionID,
-           id != session.claudeSessionID || event.transcriptPath != session.transcriptPath || directory != session.claudeDirectory {
-            session.claudeSessionID = id
-            session.transcriptPath = event.transcriptPath
-            session.claudeDirectory = directory
-            save()
-        }
-        if event.name == "SessionStart" { return }
+        // Without SessionStart (only --settings hooks), the first event of a
+        // conversation after /clear is how Merlix learns its id.
+        if !session.sessionStartSeen { adopt(event, in: session) }
 
         switch event.name {
         case "PreToolUse" where event.toolName == "AskUserQuestion":
@@ -626,6 +652,21 @@ final class Workspace {
         default:
             break
         }
+    }
+
+    /// Follows the conversation the event belongs to. A shell session takes its
+    /// folder too, which a restart goes back to; Claude's own `cd`s later on
+    /// do not count, since transcripts are filed under the folder it started in.
+    private func adopt(_ event: HookEvent, in session: Session) {
+        guard let id = event.claudeSessionID else { return }
+        let directory = session.isClaude ? session.claudeDirectory : (event.cwd ?? session.claudeDirectory)
+        guard id != session.claudeSessionID || event.transcriptPath != session.transcriptPath
+            || directory != session.claudeDirectory
+        else { return }
+        session.claudeSessionID = id
+        session.transcriptPath = event.transcriptPath
+        session.claudeDirectory = directory
+        save()
     }
 
     private func needsYou(_ session: Session, subtitle: String, body: String) {
@@ -701,9 +742,19 @@ final class Workspace {
     }
 
     func restore() {
-        guard let data = try? Data(contentsOf: Self.storeURL),
-              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: Self.storeURL) else { return }
+        let snapshot: Snapshot
+        do {
+            snapshot = try JSONDecoder().decode(Snapshot.self, from: data)
+        } catch {
+            // Keep the file out of the way of the next save, which would replace it.
+            let stamp = Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+                .replacingOccurrences(of: ":", with: "")
+            let aside = Self.storeURL.deletingLastPathComponent().appending(path: "workspace.unreadable-\(stamp).json")
+            try? FileManager.default.moveItem(at: Self.storeURL, to: aside)
+            logger.error("workspace.json could not be read, moved to \(aside.path, privacy: .public): \(error, privacy: .public)")
+            return
+        }
         projects = snapshot.projects
         groups = snapshot.groups ?? []
         sessions = snapshot.sessions.compactMap { record in

@@ -44,7 +44,7 @@ final class ProjectIcons {
     private static let directory = URL.applicationSupportDirectory.appending(path: "Merlix/icons", directoryHint: .isDirectory)
 
     /// Common places for a project's own icon, most specific first.
-    private static let candidates = [
+    nonisolated private static let candidates = [
         "icon.png", "logo.png", "icon.svg", "logo.svg", ".github/icon.png", ".github/logo.png",
         "assets/icon.png", "assets/logo.png", "public/icon.png", "public/logo.png",
         "public/apple-touch-icon.png", "public/favicon.png", "public/favicon.svg",
@@ -75,14 +75,23 @@ final class ProjectIcons {
     }
 
     /// The icon for a folder and optional picked file, as the sheet previews it.
+    /// The folder is searched off the main thread: it can be large or slow.
     static func resolve(path: String, iconFile: String?) async -> NSImage? {
-        if let iconFile, let image = NSImage(contentsOfFile: iconFile) { return image }
-        if let url = localIcon(in: path), let image = NSImage(contentsOf: url) { return image }
-        if let owner = githubOwner(in: path) { return await githubAvatar(owner) }
+        let found = await Task.detached { Self.locate(path: path, iconFile: iconFile) }.value
+        for data in found.images {
+            if let image = NSImage(data: data) { return image }
+        }
+        if let owner = found.owner { return await githubAvatar(owner) }
         return nil
     }
 
-    static func localIcon(in path: String) -> URL? {
+    /// The picked file and the folder's own icon, read, and the GitHub owner.
+    nonisolated private static func locate(path: String, iconFile: String?) -> (images: [Data], owner: String?) {
+        let files = [iconFile.map { URL(filePath: $0) }, localIcon(in: path)].compactMap { $0 }
+        return (files.compactMap { try? Data(contentsOf: $0) }, githubOwner(in: path))
+    }
+
+    nonisolated static func localIcon(in path: String) -> URL? {
         let root = URL(filePath: path, directoryHint: .isDirectory)
         let manager = FileManager.default
         for candidate in candidates {
@@ -95,7 +104,7 @@ final class ProjectIcons {
     /// The largest PNG in the first AppIcon.appiconset a few levels down.
     /// Never walks the home folder or the disk root: that reaches folders
     /// macOS protects, such as the Photos library, and asks for access.
-    private static func xcodeAppIcon(in root: URL) -> URL? {
+    nonisolated private static func xcodeAppIcon(in root: URL) -> URL? {
         func trimmed(_ url: URL) -> String {
             let path = url.standardizedFileURL.path(percentEncoded: false)
             return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
@@ -124,12 +133,12 @@ final class ProjectIcons {
         return nil
     }
 
-    private static func size(of url: URL) -> Int {
+    nonisolated private static func size(of url: URL) -> Int {
         (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
     }
 
     /// The owner in a github.com origin remote, from .git/config (worktrees included).
-    static func githubOwner(in path: String) -> String? {
+    nonisolated static func githubOwner(in path: String) -> String? {
         let root = URL(filePath: path, directoryHint: .isDirectory)
         var gitDirectory = root.appending(path: ".git")
         if let pointer = try? String(contentsOf: gitDirectory, encoding: .utf8), pointer.hasPrefix("gitdir:") {

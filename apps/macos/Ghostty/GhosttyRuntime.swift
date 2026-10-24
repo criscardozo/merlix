@@ -19,6 +19,8 @@ nonisolated enum TerminalEvent: Sendable {
     case newSession
     case gotoSession(Int32)
     case closeRequested(processAlive: Bool)
+    /// Close the whole session, every pane (Ghostty's close_tab).
+    case closeSession
     case commandPalette
     case searchStarted(needle: String?)
     case searchEnded
@@ -80,7 +82,8 @@ nonisolated private enum RuntimeAction: Sendable {
     case cellSize(CGSize)
     case openURL(String)
     case openConfig
-    case reloadConfig
+    case reloadConfig(soft: Bool)
+    case toggleFullScreen
     case secureInput(Bool?)
     case background(TerminalBackground)
     case acknowledge
@@ -195,6 +198,7 @@ final class GhosttyRuntime {
             let url = FileManager.default.temporaryDirectory.appending(path: "merlix-settings-\(getpid()).conf")
             if (try? settings.write(to: url, atomically: true, encoding: .utf8)) != nil {
                 ghostty_config_load_file(config, url.path)
+                try? FileManager.default.removeItem(at: url)
             }
         }
         ghostty_config_load_recursive_files(config)
@@ -273,8 +277,8 @@ final class GhosttyRuntime {
             read_clipboard_cb: { userdata, location, state, mimes, mimesLen, list in
                 Clipboard.read(userdata, location: location, state: state, mimes: mimes, mimesLen: mimesLen, list: list)
             },
-            confirm_read_clipboard_cb: { userdata, _, state, _ in
-                Clipboard.deny(userdata, state: state)
+            confirm_read_clipboard_cb: { userdata, confirm, state, request in
+                Clipboard.confirm(userdata, confirm: confirm, state: state, request: request)
             },
             write_clipboard_cb: { _, location, content, len, confirm in
                 Clipboard.write(location: location, content: content, len: len, confirm: confirm)
@@ -306,7 +310,11 @@ final class GhosttyRuntime {
         case GHOSTTY_ACTION_GOTO_TAB:
             decoded = .surface(.gotoSession(action.action.goto_tab.rawValue))
         case GHOSTTY_ACTION_CLOSE_TAB:
-            decoded = .surface(.closeRequested(processAlive: true))
+            // A session is a tab; closing the others or those to the right is not supported.
+            guard action.action.close_tab_mode == GHOSTTY_ACTION_CLOSE_TAB_MODE_THIS else { return nil }
+            decoded = .surface(.closeSession)
+        case GHOSTTY_ACTION_TOGGLE_FULLSCREEN:
+            decoded = .toggleFullScreen
         case GHOSTTY_ACTION_SET_TITLE:
             guard let title = action.action.set_title.title else { return nil }
             decoded = .surface(.title(String(cString: title)))
@@ -378,7 +386,7 @@ final class GhosttyRuntime {
         case GHOSTTY_ACTION_OPEN_CONFIG:
             decoded = .openConfig
         case GHOSTTY_ACTION_RELOAD_CONFIG:
-            decoded = .reloadConfig
+            decoded = .reloadConfig(soft: action.action.reload_config.soft)
         case GHOSTTY_ACTION_CONFIG_CHANGE where target.tag == GHOSTTY_TARGET_APP:
             guard let config = action.action.config_change.config else { return (view, .acknowledge) }
             decoded = .background(background(of: config))
@@ -429,7 +437,8 @@ final class GhosttyRuntime {
         case .hideMouse:
             NSCursor.setHiddenUntilMouseMoves(true)
         case .cellSize(let size):
-            view?.cellSize = size
+            // libghostty reports pixels; the IME rectangle maths is in points.
+            if let view { view.cellSize = view.convertFromBacking(size) }
         case .openURL(let string):
             if let view {
                 view.emit(.openLink(string))
@@ -439,8 +448,16 @@ final class GhosttyRuntime {
         case .openConfig:
             // Ghostty's ⌘, opens Merlix's Settings rather than Ghostty's config file.
             eventHandler?(.openSettings, view)
-        case .reloadConfig:
-            reloadConfig()
+        case .reloadConfig(let soft):
+            // A soft reload (every light/dark switch, once per surface) only
+            // re-applies the config already loaded; reading it again is not needed.
+            if soft {
+                if let app, let config { ghostty_app_update_config(app, config) }
+            } else {
+                reloadConfig()
+            }
+        case .toggleFullScreen:
+            (view?.window ?? NSApp.keyWindow)?.toggleFullScreen(nil)
         case .background(let value):
             background = value
         case .secureInput(let on):

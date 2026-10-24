@@ -15,6 +15,8 @@ struct HookEvent {
     let cwd: String?
     /// SessionEnd's reason ("clear" when /clear starts a new conversation).
     let reason: String?
+    /// SessionStart's source: "startup", "resume", "clear" or "compact".
+    let source: String?
     /// What the tool call is about, for a notification: the question and its
     /// options, the command, the file or the URL.
     let detail: String?
@@ -127,6 +129,8 @@ final class ClaudeHooks {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
         }
         _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+        // libghostty forks shells without closing descriptors.
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
 
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         source.setEventHandler {
@@ -142,6 +146,7 @@ final class ClaudeHooks {
             let fd = Darwin.accept(listener, nil, nil)
             guard fd >= 0 else { return }
             _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
             var noSigPipe: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
@@ -184,6 +189,7 @@ final class ClaudeHooks {
             toolName: json["tool_name"] as? String,
             cwd: json["cwd"] as? String,
             reason: json["reason"] as? String,
+            source: json["source"] as? String,
             detail: Self.describe(tool: json["tool_name"] as? String, input: json["tool_input"] as? [String: Any])))
     }
 
@@ -231,7 +237,7 @@ final class ClaudeHooks {
             guard let colon = line.firstIndex(of: ":") else { continue }
             headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
-        let length = headers["content-length"].flatMap(Int.init) ?? 0
+        let length = max(0, headers["content-length"].flatMap(Int.init) ?? 0)
         let body = data[end.upperBound...]
         guard body.count >= length else { return nil }
         return (headers, Data(body.prefix(length)))

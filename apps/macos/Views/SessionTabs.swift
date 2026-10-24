@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// What hiding the sidebar shows: tabs for every session, or the selected
 /// session alone. Picked in Settings.
@@ -15,6 +16,7 @@ struct SessionTabs: View {
     @Environment(Workspace.self) private var workspace
     @State private var dragging: UUID?
     @State private var mark: (id: UUID, before: Bool)?
+    @State private var widths: [UUID: CGFloat] = [:]
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -26,10 +28,11 @@ struct SessionTabs: View {
                         .onTapGesture { workspace.select(session.id) }
                         .onDrag {
                             dragging = session.id
-                            return NSItemProvider(object: session.id.uuidString as NSString)
+                            return NSItemProvider.merlixItem()
                         }
-                        .onDrop(of: [.plainText], delegate: TabDropDelegate(
-                            target: session.id, dragging: dragging, mark: $mark,
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[session.id] = $0 }
+                        .onDrop(of: [.merlixItem], delegate: TabDropDelegate(
+                            target: session.id, width: widths[session.id] ?? 110, dragging: dragging, mark: $mark,
                             perform: { before in
                                 if let dragging { workspace.moveTab(dragging, nextTo: session.id, before: before) }
                                 dragging = nil
@@ -84,6 +87,7 @@ private struct SessionTab: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Close Session")
+                    .accessibilityLabel("Close Session")
                 }
             }
             .frame(width: 13, height: 13)
@@ -111,16 +115,19 @@ private struct SessionTab: View {
 
 private struct TabDropDelegate: DropDelegate {
     let target: UUID
+    let width: CGFloat
     let dragging: UUID?
     @Binding var mark: (id: UUID, before: Bool)?
     let perform: (_ before: Bool) -> Void
 
-    func validateDrop(info: DropInfo) -> Bool { dragging != nil && dragging != target }
+    func validateDrop(info: DropInfo) -> Bool {
+        dragging != nil && dragging != target && info.hasItemsConforming(to: [.merlixItem])
+    }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
-        // Tabs are at least 110 pt wide; the left half drops before.
-        mark = (target, info.location.x < 55)
+        // The left half drops before.
+        mark = (target, info.location.x < width / 2)
         return DropProposal(operation: .move)
     }
 
@@ -129,7 +136,7 @@ private struct TabDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        let before = mark?.before ?? (info.location.x < 55)
+        let before = mark?.before ?? (info.location.x < width / 2)
         mark = nil
         guard validateDrop(info: info) else { return false }
         perform(before)

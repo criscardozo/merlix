@@ -66,6 +66,10 @@ final class Session: Identifiable {
     /// Hooks reported for this terminal, so they decide the status instead of
     /// the terminal's progress reports and notifications.
     var hooksActive = false
+    /// SessionStart reached Merlix (global hooks), so it alone says which
+    /// conversation the terminal runs; a `claude -p` run from inside it or
+    /// in a split reports with the same terminal id and must not take over.
+    @ObservationIgnored var sessionStartSeen = false
 
     /// The find bar over this session's terminal; nil while it is closed.
     var search: SearchState?

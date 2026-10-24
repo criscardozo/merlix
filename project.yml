@@ -45,6 +45,11 @@ targets:
         LSApplicationCategoryType: public.app-category.developer-tools
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: ""
+        # What sidebar rows and tabs carry while dragged; see UTType.merlixItem.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.cardozo.merlix.item
+            UTTypeDescription: Merlix item
+            UTTypeConformsTo: [public.data]
     settings:
       base:
         PRODUCT_NAME: Merlix

@@ -36,6 +36,7 @@ struct UsageFooter: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help("Settings (⌘,)")
+                .accessibilityLabel("Settings")
             }
             .font(.system(size: 13, weight: .medium))
             .padding(.leading, 18)

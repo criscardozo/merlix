@@ -19,7 +19,14 @@ nonisolated enum ClaudeTranscripts {
             return String(cString: pointer)
         } ?? folder
         let trimmed = real.hasSuffix("/") && real.count > 1 ? String(real.dropLast()) : real
-        let encoded = String(trimmed.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "-" })
+        // Only ASCII letters and digits survive, and anything else becomes one
+        // "-" per UTF-16 unit, as in Claude's JavaScript: "año" is "a-o".
+        let encoded = String(decoding: trimmed.utf16.map { unit -> UInt16 in
+            switch unit {
+            case 0x30...0x39, 0x41...0x5A, 0x61...0x7A: unit
+            default: 0x2D
+            }
+        }, as: UTF16.self)
         return URL.homeDirectory.appending(path: ".claude/projects/\(encoded)", directoryHint: .isDirectory)
     }
 

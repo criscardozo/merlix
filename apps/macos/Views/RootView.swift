@@ -99,7 +99,7 @@ private struct PaletteLayer: View {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.15)
                     .contentShape(Rectangle())
-                    .onTapGesture { workspace.paletteVisible = false }
+                    .onTapGesture { workspace.closePalette() }
                 CommandPalette()
                     .padding(.top, 90)
             }
@@ -262,6 +262,7 @@ struct SidebarToggle: View {
         .font(.system(size: 14))
         .foregroundStyle(.secondary)
         .help(sidebarVisible ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)")
+        .accessibilityLabel(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
     }
 }
 
@@ -280,6 +281,7 @@ struct NewSessionMenu: View {
         .font(.system(size: 14))
         .foregroundStyle(.secondary)
         .help("New Session, Group or Project")
+        .accessibilityLabel("New Session, Group or Project")
     }
 }
 
@@ -298,7 +300,6 @@ struct AddMenuItems: View {
     }
 }
 
-/// A thin strip on the sidebar's trailing edge that resizes it.
 /// Shows or hides the files panel on the right.
 struct FilesToggle: View {
     @AppStorage("filesVisible", store: .merlix) private var filesVisible = false
@@ -315,9 +316,11 @@ struct FilesToggle: View {
         .font(.system(size: 14))
         .foregroundStyle(filesVisible ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
         .help(filesVisible ? "Hide Files (⌥⌘B)" : "Show Files (⌥⌘B)")
+        .accessibilityLabel(filesVisible ? "Hide Files" : "Show Files")
     }
 }
 
+/// A thin strip on the sidebar's trailing edge that resizes it.
 private struct SidebarResizeHandle: View {
     @Binding var width: Double
     var range: ClosedRange<Double> = 200...420
@@ -330,9 +333,8 @@ private struct SidebarResizeHandle: View {
             .frame(width: 10)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.columnResize.push() } else { NSCursor.pop() }
-            }
+            // Not push/pop on hover: hiding the panel under the pointer would leave the cursor stuck.
+            .pointerStyle(.columnResize)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in

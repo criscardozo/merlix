@@ -3,8 +3,8 @@ import GhosttyKit
 import UniformTypeIdentifiers
 
 /// Bridges libghostty clipboard requests to the system pasteboard. Only the
-/// standard clipboard is supported; requests that need a confirmation prompt
-/// are denied until Merlix grows a UI for them.
+/// standard clipboard is supported. A paste that could run commands asks
+/// first; programs reading the clipboard (OSC 52) are always refused.
 nonisolated enum Clipboard {
     static func read(
         _ userdata: UnsafeMutableRawPointer?,
@@ -39,9 +39,51 @@ nonisolated enum Clipboard {
         return GHOSTTY_CLIPBOARD_READ_STARTED
     }
 
-    static func deny(_ userdata: UnsafeMutableRawPointer?, state: UnsafeMutableRawPointer?) {
-        guard let surface = TerminalSurfaceView.from(userdata)?.surface else { return }
-        ghostty_surface_deny_clipboard_request(surface, state)
+    /// libghostty asks before a paste it considers unsafe: line breaks without
+    /// bracketed paste, which would run each line as a command.
+    static func confirm(
+        _ userdata: UnsafeMutableRawPointer?,
+        confirm: UnsafePointer<ghostty_clipboard_confirm_s>?,
+        state: UnsafeMutableRawPointer?,
+        request: ghostty_clipboard_request_e
+    ) {
+        guard let view = TerminalSurfaceView.from(userdata), let surface = view.surface else { return }
+        guard request == GHOSTTY_CLIPBOARD_REQUEST_PASTE, let confirm else {
+            ghostty_surface_deny_clipboard_request(surface, state)
+            return
+        }
+        // The C payload is borrowed: copy it before asking.
+        let c = confirm.pointee
+        var contents: [(mime: String, data: Data)] = []
+        for i in 0..<(c.contents == nil ? 0 : c.contents_len) {
+            let entry = c.contents[i]
+            guard let mime = entry.mime else { continue }
+            let data = entry.len > 0 && entry.data != nil ? Data(bytes: entry.data, count: entry.len) : Data()
+            contents.append((String(cString: mime), data))
+        }
+        var available: [String] = []
+        for i in 0..<(c.available == nil ? 0 : c.available_len) {
+            if let pointer = c.available[i] { available.append(String(cString: pointer)) }
+        }
+        let text = contents.first { $0.mime.hasPrefix("text/plain") }.map { String(decoding: $0.data, as: UTF8.self) } ?? ""
+        // libghostty keeps the request alive until it is completed or denied, on the main thread.
+        nonisolated(unsafe) let state = state
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let surface = view.surface else { return }
+                let alert = NSAlert()
+                alert.messageText = "Paste text with line breaks?"
+                alert.informativeText = "This terminal may run each line as a command.\n\n"
+                    + (text.count > 400 ? String(text.prefix(400)) + "…" : text)
+                alert.addButton(withTitle: "Paste")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    complete(surface, contents: contents, available: available, state: state, confirmed: true)
+                } else {
+                    ghostty_surface_deny_clipboard_request(surface, state)
+                }
+            }
+        }
     }
 
     static func write(
@@ -74,7 +116,8 @@ nonisolated enum Clipboard {
         _ surface: ghostty_surface_t,
         contents: [(mime: String, data: Data)],
         available: [String],
-        state: UnsafeMutableRawPointer?
+        state: UnsafeMutableRawPointer?,
+        confirmed: Bool = false
     ) {
         var owned: [UnsafeMutableRawPointer] = []
         defer { owned.forEach { free($0) } }
@@ -104,7 +147,7 @@ nonisolated enum Clipboard {
                     contents_len: contentsBuffer.count,
                     available: availableBuffer.baseAddress,
                     available_len: availableBuffer.count,
-                    confirmed: false,
+                    confirmed: confirmed,
                     remember: false)
                 ghostty_surface_complete_clipboard_request(surface, &completion, state)
             }

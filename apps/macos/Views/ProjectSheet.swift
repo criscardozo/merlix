@@ -46,6 +46,10 @@ struct ProjectSheet: View {
     @State private var creatingGroup = false
     @State private var conversations: [ClaudeConversation] = []
     @State private var start = Start.newSession
+    /// Where an automatic icon comes from, found with the preview.
+    @State private var automaticSource = "Initial"
+    /// Groups made from this sheet; Cancel removes them again if still empty.
+    @State private var createdGroups: [UUID] = []
 
     private enum Start { case newSession, previousSession, shell }
 
@@ -149,7 +153,12 @@ struct ProjectSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { workspace.projectDraft = nil }
+                Button("Cancel", role: .cancel) {
+                    for group in workspace.groups where createdGroups.contains(group.id) && workspace.projects(in: group).isEmpty {
+                        workspace.deleteGroup(group)
+                    }
+                    workspace.projectDraft = nil
+                }
                     .keyboardShortcut(.cancelAction)
                 Button(draft.isNew ? "Add Project" : "Save") { workspace.commit(trimmed) }
                     .keyboardShortcut(.defaultAction)
@@ -162,19 +171,29 @@ struct ProjectSheet: View {
         .task(id: "\(draft.project.path)|\(draft.pickedImage?.path ?? draft.project.iconFile ?? "")|\(draft.project.usesInitials == true)") {
             preview = draft.project.usesInitials == true ? nil : await ProjectIcons.resolve(
                 path: draft.project.path, iconFile: draft.pickedImage?.path ?? draft.project.iconFile)
+            let path = draft.project.path
+            automaticSource = await Task.detached { Self.automaticSource(in: path) }.value
         }
         .task(id: draft.project.path) {
             guard draft.isNew else { return }
             let folder = draft.project.path
             conversations = await Task.detached { ClaudeTranscripts.conversations(in: folder) }.value
             if conversations.isEmpty, start == .previousSession { start = .newSession }
+            // A conversation of the folder chosen before cannot be resumed here.
+            if let resume = draft.resume, !conversations.contains(resume) {
+                draft.resume = start == .previousSession ? conversations.first : nil
+            }
         }
         .onChange(of: start) {
             draft.resume = start == .previousSession ? (draft.resume ?? conversations.first) : nil
             draft.startsShell = start == .shell
         }
         .sheet(isPresented: $creatingGroup) {
-            NewGroupSheet { name in draft.project.groupID = workspace.addGroup(named: name).id }
+            NewGroupSheet { name in
+                let group = workspace.addGroup(named: name)
+                createdGroups.append(group.id)
+                draft.project.groupID = group.id
+            }
         }
     }
 
@@ -201,11 +220,15 @@ struct ProjectSheet: View {
         if draft.project.usesInitials == true { return "Initials" }
         if let picked = draft.pickedImage { return picked.lastPathComponent }
         if draft.project.iconFile != nil { return "Custom image" }
-        if let url = ProjectIcons.localIcon(in: draft.project.path) {
-            let root = URL(filePath: draft.project.path, directoryHint: .isDirectory).standardizedFileURL.path
+        return automaticSource
+    }
+
+    nonisolated private static func automaticSource(in path: String) -> String {
+        if let url = ProjectIcons.localIcon(in: path) {
+            let root = URL(filePath: path, directoryHint: .isDirectory).standardizedFileURL.path
             return String(url.standardizedFileURL.path.dropFirst(root.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
-        if let owner = ProjectIcons.githubOwner(in: draft.project.path) { return "GitHub · \(owner)" }
+        if let owner = ProjectIcons.githubOwner(in: path) { return "GitHub · \(owner)" }
         return "Initial"
     }
 

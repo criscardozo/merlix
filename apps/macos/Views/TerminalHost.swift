@@ -83,8 +83,8 @@ struct WindowConfigurator: NSViewRepresentable {
             // update; centreTrafficLights only writes when something moved.
             observers.append(NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
-            ) { _ in
-                MainActor.assumeIsolated { Self.centreTrafficLights(in: window) }
+            ) { [weak window] _ in
+                MainActor.assumeIsolated { if let window { Self.centreTrafficLights(in: window) } }
             })
             // A layout pass can move them after the update; catch that too.
             if let close = window.standardWindowButton(.closeButton), let titlebar = close.superview,
@@ -93,8 +93,8 @@ struct WindowConfigurator: NSViewRepresentable {
                     view.postsFrameChangedNotifications = true
                     observers.append(NotificationCenter.default.addObserver(
                         forName: NSView.frameDidChangeNotification, object: view, queue: .main
-                    ) { _ in
-                        MainActor.assumeIsolated { Self.centreTrafficLights(in: window) }
+                    ) { [weak window] _ in
+                        MainActor.assumeIsolated { if let window { Self.centreTrafficLights(in: window) } }
                     })
                 }
             }

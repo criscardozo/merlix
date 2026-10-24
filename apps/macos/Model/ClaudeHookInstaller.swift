@@ -53,7 +53,7 @@ nonisolated enum ClaudeHookInstaller {
         try scriptBody.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
 
-        var settings = readSettings() ?? [:]
+        var settings = try readSettingsForWriting()
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         for event in events {
             var entries = (hooks[event.name] as? [[String: Any]] ?? []).filter { !isMerlix($0) }
@@ -67,7 +67,8 @@ nonisolated enum ClaudeHookInstaller {
     }
 
     static func uninstall() throws {
-        guard var settings = readSettings(), var hooks = settings["hooks"] as? [String: Any] else { return }
+        var settings = try readSettingsForWriting()
+        guard var hooks = settings["hooks"] as? [String: Any] else { return }
         for (name, value) in hooks {
             guard let entries = value as? [[String: Any]] else { continue }
             let kept = entries.filter { !isMerlix($0) }
@@ -87,16 +88,27 @@ nonisolated enum ClaudeHookInstaller {
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
-    /// Keeps a dated copy of the previous file next to it before writing.
+    /// The settings to change: empty when there is no file yet, an error when
+    /// the file is there but is not a JSON object, so it is never replaced.
+    private static func readSettingsForWriting() throws -> [String: Any] {
+        guard FileManager.default.fileExists(atPath: settings.path) else { return [:] }
+        guard let object = readSettings() else { throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: settings.path]) }
+        return object
+    }
+
+    /// Keeps a dated copy of the previous file next to it before writing, and
+    /// writes through a symlink (dotfiles setups) instead of replacing it.
     private static func write(_ object: [String: Any]) throws {
-        if FileManager.default.fileExists(atPath: settings.path) {
+        let target = settings.resolvingSymlinksInPath()
+        if FileManager.default.fileExists(atPath: target.path) {
             let stamp = Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
                 .replacingOccurrences(of: ":", with: "")
             let backup = settings.deletingLastPathComponent().appending(path: "settings.json.merlix-backup-\(stamp)")
-            try? FileManager.default.copyItem(at: settings, to: backup)
+            try? FileManager.default.removeItem(at: backup)
+            try FileManager.default.copyItem(at: target, to: backup)
         }
-        try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        try data.write(to: settings, options: .atomic)
+        try data.write(to: target, options: .atomic)
     }
 }

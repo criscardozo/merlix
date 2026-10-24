@@ -164,9 +164,6 @@ struct CommandPalette: View {
     }
 
     private func dismiss() {
-        workspace.paletteVisible = false
-        if let view = workspace.selectedSession?.activeSurface {
-            DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
-        }
+        workspace.closePalette()
     }
 }

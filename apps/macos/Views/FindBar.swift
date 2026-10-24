@@ -33,10 +33,13 @@ struct FindBar: View {
             Group {
                 Button { navigate("previous") } label: { Image(systemName: "chevron.up") }
                     .help("Previous Match (⇧⌘G)")
+                    .accessibilityLabel("Previous Match")
                 Button { navigate("next") } label: { Image(systemName: "chevron.down") }
                     .help("Next Match (⌘G)")
+                    .accessibilityLabel("Next Match")
                 Button { close() } label: { Image(systemName: "xmark") }
                     .help("Close (Esc)")
+                    .accessibilityLabel("Close Find")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)

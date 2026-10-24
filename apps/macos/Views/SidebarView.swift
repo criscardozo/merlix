@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Groups as small labels, each project as one row with its icon. A project's
 /// first session is the row itself; any further sessions sit indented below it.
@@ -35,7 +36,7 @@ struct SidebarView: View {
                                 Button("New Group…") { workspace.promptForNewGroup() }
                             }
                                 .overlay(alignment: .bottom) { mark(.header(nil), before: false) }
-                                .onDrop(of: [.plainText], delegate: dropDelegate(.header(nil), height: Self.headerHeight))
+                                .onDrop(of: [.merlixItem], delegate: dropDelegate(.header(nil), height: Self.headerHeight))
                         }
                         ForEach(loose) { projectItem($0) }
                     }
@@ -52,9 +53,9 @@ struct SidebarView: View {
                             .contextMenu { groupMenu(group) }
                             .onDrag {
                                 dragging = .group(group.id)
-                                return NSItemProvider(object: group.name as NSString)
+                                return NSItemProvider.merlixItem()
                             }
-                            .onDrop(of: [.plainText], delegate: dropDelegate(.header(group.id), height: Self.headerHeight))
+                            .onDrop(of: [.merlixItem], delegate: dropDelegate(.header(group.id), height: Self.headerHeight))
                         if !group.isCollapsed {
                             ForEach(projects) { projectItem($0) }
                         }
@@ -106,9 +107,9 @@ struct SidebarView: View {
             .contextMenu { projectMenu(project) }
             .onDrag {
                 dragging = .project(project.id)
-                return NSItemProvider(object: project.name as NSString)
+                return NSItemProvider.merlixItem()
             }
-            .onDrop(of: [.plainText], delegate: dropDelegate(.project(project.id), height: Self.rowHeight))
+            .onDrop(of: [.merlixItem], delegate: dropDelegate(.project(project.id), height: Self.rowHeight))
         ForEach(sessions.dropFirst()) { session in
             SessionRow(session: session, selected: session.id == workspace.selectedSessionID)
                 .padding(.leading, 26)
@@ -117,7 +118,7 @@ struct SidebarView: View {
                 // Dropped elsewhere, it becomes an item of its own.
                 .onDrag {
                     dragging = .session(session.id)
-                    return NSItemProvider(object: session.displayName as NSString)
+                    return NSItemProvider.merlixItem()
                 }
         }
     }
@@ -298,6 +299,24 @@ private enum DropSpot: Equatable {
     case header(UUID?)
 }
 
+extension UTType {
+    /// A sidebar row or tab being dragged. Only Merlix's own views accept it,
+    /// so dropping one on a terminal pastes nothing.
+    static let merlixItem = UTType(exportedAs: "dev.cardozo.merlix.item")
+}
+
+extension NSItemProvider {
+    /// The views keep what is dragged in their state; the provider only marks the drag as Merlix's.
+    static func merlixItem() -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.merlixItem.identifier, visibility: .ownProcess) { done in
+            done(Data(), nil)
+            return nil
+        }
+        return provider
+    }
+}
+
 private struct DropMark: Equatable {
     let spot: DropSpot
     let before: Bool
@@ -311,7 +330,9 @@ private struct SidebarDropDelegate: DropDelegate {
     let accepts: () -> Bool
     let perform: (_ before: Bool) -> Void
 
-    func validateDrop(info: DropInfo) -> Bool { dragging != nil && accepts() }
+    func validateDrop(info: DropInfo) -> Bool {
+        dragging != nil && info.hasItemsConforming(to: [.merlixItem]) && accepts()
+    }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
@@ -372,6 +393,9 @@ private struct GroupHeader<Menu: View>: View {
         .contentShape(Rectangle())
         .onTapGesture { toggle?() }
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(toggle == nil ? [.isHeader] : [.isHeader, .isButton])
+        .accessibilityAction(named: collapsed == true ? "Expand" : "Collapse") { toggle?() }
     }
 }
 
@@ -395,6 +419,7 @@ private struct MoreButton<Content: View>: View {
         .opacity(visible ? 1 : 0)
         .allowsHitTesting(visible)
         .help("More")
+        .accessibilityLabel("More")
     }
 }
 

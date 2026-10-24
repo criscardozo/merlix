@@ -33,6 +33,22 @@ struct StatusIcon: View {
     let unread: Bool
 
     var body: some View {
+        icon
+            .accessibilityElement()
+            .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        switch status {
+        case .working: "Working"
+        case .needsYou: "Needs you"
+        case .done: unread ? "Done, not seen yet" : "Done"
+        case .idle: ""
+        }
+    }
+
+    @ViewBuilder
+    private var icon: some View {
         switch status {
         case .working:
             Spinner()
