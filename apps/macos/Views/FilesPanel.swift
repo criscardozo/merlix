@@ -62,6 +62,7 @@ struct FilesPanel: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help("Back to Files")
+                .accessibilityLabel("Back to Files")
                 Text(file.url.lastPathComponent)
                     .fontWeight(.semibold)
                     .lineLimit(1)
@@ -75,6 +76,7 @@ struct FilesPanel: View {
                     Button("Save") { _ = save(file) }
                         .controlSize(.small)
                         .help("Save (⌘S)")
+                        .accessibilityLabel("Save")
                 }
                 iconButton("arrow.up.left.and.arrow.down.right", help: "Open in Tab") { files.openInTab(file) }
             } else {
@@ -176,6 +178,23 @@ struct FilesPanel: View {
     }
 }
 
+extension EditedFile {
+    /// Saves, or tells why it could not; returns whether it saved.
+    @discardableResult
+    func saveOrAlert() -> Bool {
+        do {
+            try save()
+            return true
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.messageText = "Couldn't save “\(url.lastPathComponent)”"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            return false
+        }
+    }
+}
+
 private struct FileRow: View {
     let node: FileNode
 
@@ -253,7 +272,7 @@ struct FileTabStrip: View {
         .alert("Save changes to “\(closing?.url.lastPathComponent ?? "")”?",
                isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
             Button("Save") {
-                if let closing, (try? closing.save()) != nil { files.closeTab(closing, in: root) }
+                if let closing, closing.saveOrAlert() { files.closeTab(closing, in: root) }
             }
             Button("Don't Save", role: .destructive) { if let closing { files.closeTab(closing, in: root) } }
             Button("Cancel", role: .cancel) {}
@@ -298,6 +317,7 @@ private struct TabChip: View {
                         .foregroundStyle(.secondary)
                         .opacity(hovering || selected ? 1 : 0)
                         .help("Close Tab")
+                        .accessibilityLabel("Close Tab")
                     }
                 }
                 .frame(width: 14, height: 14)

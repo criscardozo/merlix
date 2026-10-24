@@ -24,6 +24,9 @@ final class EditedFile {
     var changedOnDisk = false
     /// A line the editor should scroll to and select, once.
     var revealLine: Int?
+    /// Its own undo history, which survives switching tabs; the window's
+    /// would be shared by every editor and the terminal.
+    @ObservationIgnored let undoManager = UndoManager()
 
     var isDirty: Bool { text != savedText }
 
@@ -42,10 +45,16 @@ final class EditedFile {
     /// Takes the disk's version; unsaved edits are lost.
     func reload() {
         guard let disk = try? String(contentsOf: url, encoding: .utf8) else { return }
-        text = disk
         savedText = disk
         changedOnDisk = false
+        replaceText(disk)
+    }
+
+    /// Replaces the text from outside the editor, which then shows it.
+    func replaceText(_ new: String) {
+        text = new
         revision += 1
+        undoManager.removeAllActions()
     }
 
     /// Called when the file changed on disk: reload it, unless that would
@@ -92,7 +101,8 @@ final class ProjectFiles {
         if let root { buffers[root] = openFile }
         root = path
         nodes = []
-        openFile = path.flatMap { buffers[$0] }
+        // Taken out, so a file closed later is not still counted as unsaved.
+        openFile = path.flatMap { buffers.removeValue(forKey: $0) }
         openError = nil
         // Changes made while this project was not being watched.
         if let path {
@@ -109,6 +119,11 @@ final class ProjectFiles {
         loading = nodes.isEmpty
         refreshTask?.cancel()
         refreshTask = Task {
+            // Changes come in bursts (a build, a checkout); list once they settle.
+            if !loading {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+            }
             let tree = await Task.detached { Self.tree(at: root) }.value
             guard !Task.isCancelled, self.root == root else { return }
             nodes = tree
@@ -116,22 +131,38 @@ final class ProjectFiles {
         }
     }
 
+    /// Shows `path` in the panel, or brings its tab forward if it has one, so
+    /// a file is never open twice with edits drifting apart.
     func open(_ path: String) {
-        let url = URL(filePath: path)
         openError = nil
+        if let root, let tab = tabs[root]?.first(where: { Self.same($0.url, path) }) {
+            activeTab[root] = tab.url
+            return
+        }
+        if let openFile, Self.same(openFile.url, path) { return }
+        if let file = load(path) { openFile = file }
+    }
+
+    /// Reads a text file; on failure says why in `openError`.
+    private func load(_ path: String) -> EditedFile? {
+        let url = URL(filePath: path)
         guard let data = try? Data(contentsOf: url) else {
             openError = "Merlix could not read this file."
-            return
+            return nil
         }
         guard data.count <= Self.largeFile * 5 else {
             openError = "This file is too large to open here."
-            return
+            return nil
         }
         guard !data.prefix(8000).contains(0), let text = String(data: data, encoding: .utf8) else {
             openError = "This looks like a binary file."
-            return
+            return nil
         }
-        openFile = EditedFile(url: url, text: text)
+        return EditedFile(url: url, text: text)
+    }
+
+    nonisolated private static func same(_ url: URL, _ path: String) -> Bool {
+        url.path(percentEncoded: false) == path
     }
 
     /// Open files with edits not yet saved, in any project.
@@ -159,7 +190,7 @@ final class ProjectFiles {
         if openFile === file { openFile = nil }
         var list = tabs[root] ?? []
         if let existing = list.first(where: { $0.url == file.url }) {
-            if file.isDirty, !existing.isDirty { existing.text = file.text }
+            if existing !== file, file.isDirty { existing.replaceText(file.text) }
         } else {
             list.append(file)
         }
@@ -170,14 +201,13 @@ final class ProjectFiles {
     /// Returns false when the file cannot be shown as text.
     @discardableResult
     func openInTab(path: String, line: Int? = nil) -> Bool {
-        if let existing = root.flatMap({ tabs[$0] })?.first(where: { $0.url.path(percentEncoded: false) == path }) {
-            existing.revealLine = line
-            openInTab(existing)
-            return true
-        }
-        let previous = openFile
-        open(path)
-        guard let file = openFile, file !== previous else { return false }
+        openError = nil
+        // The panel's copy moves over with its edits; anything else is read
+        // without touching the panel.
+        let file = root.flatMap { tabs[$0] }?.first(where: { Self.same($0.url, path) })
+            ?? openFile.flatMap { Self.same($0.url, path) ? $0 : nil }
+            ?? load(path)
+        guard let file else { return false }
         file.revealLine = line
         openInTab(file)
         return true
@@ -314,6 +344,13 @@ final class ProjectFiles {
         }
     }
 
+    nonisolated private static func realPath(_ path: String) -> String {
+        realpath(path, nil).map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        } ?? path
+    }
+
     private func stopWatching() {
         guard let stream else { return }
         FSEventStreamStop(stream)
@@ -326,8 +363,10 @@ final class ProjectFiles {
         // .git churns on every command; its changes do not alter the tree.
         let relevant = paths.filter { !$0.contains("/.git/") }
         guard !relevant.isEmpty else { return }
+        // FSEvents reports real paths: /private/tmp, symlinks followed.
+        let changed = Set(relevant)
         let open = [openFile].compactMap { $0 } + (root.flatMap { tabs[$0] } ?? [])
-        for file in open where relevant.contains(file.url.path(percentEncoded: false)) {
+        for file in open where changed.contains(Self.realPath(file.url.path(percentEncoded: false))) {
             file.diskChanged()
         }
         refresh()

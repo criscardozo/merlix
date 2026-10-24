@@ -77,7 +77,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "Don't Save")
             switch alert.runModal() {
             case .alertFirstButtonReturn:
-                for file in unsaved { try? file.save() }
+                // A file that could not be saved keeps Merlix open, edits and all.
+                for file in unsaved where !file.saveOrAlert() { return .terminateCancel }
             case .alertSecondButtonReturn:
                 return .terminateCancel
             default:
@@ -124,7 +125,7 @@ struct MerlixCommands: Commands {
         CommandGroup(replacing: .saveItem) {
             // ⌘W closes the session even when the terminal does not have focus,
             // instead of closing the only window and quitting.
-            Button("Save File") { try? ProjectFiles.shared.currentFile?.save() }
+            Button("Save File") { ProjectFiles.shared.currentFile?.saveOrAlert() }
                 .keyboardShortcut("s")
                 .disabled(ProjectFiles.shared.currentFile?.isDirty != true)
             Button("Close") { Workspace.shared.closeSelectedSession() }
@@ -141,14 +142,12 @@ struct MerlixCommands: Commands {
         }
         CommandGroup(after: .pasteboard) {
             Divider()
-            Button("Find…") { Workspace.shared.selectedSession?.activeSurface?.performBinding("start_search") }
+            Button("Find…") { Self.find(.showFindInterface, terminal: "start_search") }
                 .keyboardShortcut("f")
-            Button("Find Next") { Workspace.shared.selectedSession?.activeSurface?.performBinding("navigate_search:next") }
+            Button("Find Next") { Self.find(.nextMatch, terminal: "navigate_search:next") }
                 .keyboardShortcut("g")
-            Button("Find Previous") {
-                Workspace.shared.selectedSession?.activeSurface?.performBinding("navigate_search:previous")
-            }
-            .keyboardShortcut("g", modifiers: [.command, .shift])
+            Button("Find Previous") { Self.find(.previousMatch, terminal: "navigate_search:previous") }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
         }
         CommandMenu("Session") {
             Button("Command Palette…") { Workspace.shared.paletteVisible.toggle() }
@@ -171,6 +170,32 @@ struct MerlixCommands: Commands {
             Button("Next Session") { Workspace.shared.selectSession(at: -2) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
         }
+    }
+
+    /// Find in the file editor when it has focus, else in the terminal.
+    private static func find(_ action: NSTextFinder.Action, terminal binding: String) {
+        if let editor = focusedEditor() {
+            let sender = NSMenuItem()
+            sender.tag = action.rawValue
+            editor.performTextFinderAction(sender)
+            return
+        }
+        Workspace.shared.selectedSession?.activeSurface?.performBinding(binding)
+    }
+
+    /// The file editor with focus, also while typing in its own find bar.
+    private static func focusedEditor() -> NSTextView? {
+        guard let responder = NSApp.keyWindow?.firstResponder as? NSTextView else { return nil }
+        if responder.usesFindBar { return responder }
+        guard responder.isFieldEditor else { return nil }
+        var view = responder.delegate as? NSView
+        while let current = view {
+            if let scroll = current as? NSScrollView, let text = scroll.documentView as? NSTextView, text.usesFindBar {
+                return text
+            }
+            view = current.superview
+        }
+        return nil
     }
 
     private static func showAbout() {

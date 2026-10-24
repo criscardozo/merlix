@@ -47,6 +47,8 @@ struct SyntaxHighlighter {
                     ? match.range(at: 1) : match.range
                 guard range.length > 0, !covered.intersects(integersIn: range.location..<range.location + range.length)
                 else { return }
+                // The first rule wins: `Self` is a keyword, not a type.
+                covered.insert(integersIn: range.location..<range.location + range.length)
                 storage.addAttribute(.foregroundColor, value: colour, range: range)
             }
         }
@@ -62,6 +64,8 @@ struct SyntaxHighlighter {
 
     private static let cComments = #"(//[^\n]*|/\*[\s\S]*?\*/)"#
     private static let hashComments = #"(#[^\n]*)"#
+    /// Shell and YAML: only after a space or at the start, so `$#` and `${#x}` are not comments.
+    private static let spacedHashComments = #"((?<![^\s])#[^\n]*)"#
     private static let quoted = #"("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')"#
     private static let number = (#"\b(0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)\b"#, Role.number)
     private static let capitalised = (#"\b([A-Z][A-Za-z0-9_]*)\b"#, Role.type)
@@ -89,7 +93,8 @@ struct SyntaxHighlighter {
                 ])
         case "json", "jsonc":
             return Language(
-                opaque: [cComments + #"|("(?:\\.|[^"\\\n])*"(?!\s*:))"#],
+                // Keys match the last, uncaptured alternative, so the key rule colours them.
+                opaque: [cComments + #"|("(?:\\.|[^"\\\n])*"(?!\s*:))|"(?:\\.|[^"\\\n])*"(?=\s*:)"#],
                 rules: [(#"("(?:\\.|[^"\\\n])*")(?=\s*:)"#, .key), words("true false null"), number])
         case "py":
             return Language(
@@ -100,14 +105,14 @@ struct SyntaxHighlighter {
                 ])
         case "sh", "bash", "zsh", "fish", "command":
             return Language(
-                opaque: [hashComments + "|" + quoted],
+                opaque: [spacedHashComments + "|" + quoted],
                 rules: [
                     words("if then else elif fi for in do done while until case esac function return local export source set unset echo exit"),
                     (#"(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)"#, .type), number,
                 ])
         case "yml", "yaml", "toml", "ini", "conf", "env":
             return Language(
-                opaque: [hashComments + "|" + quoted],
+                opaque: [spacedHashComments + "|" + quoted],
                 rules: [(#"^\s*-?\s*([A-Za-z0-9_.\-]+)\s*[:=]"#, .key), (#"^\s*(\[[^\]]+\])"#, .type),
                         words("true false null yes no on off"), number])
         case "md", "markdown":

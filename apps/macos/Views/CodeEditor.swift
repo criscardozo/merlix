@@ -52,9 +52,12 @@ struct CodeEditor: NSViewRepresentable {
 
     func updateNSView(_ view: NSView, context: Context) {
         let coordinator = context.coordinator
-        if coordinator.file !== file || coordinator.revision != file.revision || coordinator.background != background {
+        if coordinator.file !== file || coordinator.revision != file.revision {
             coordinator.file = file
             coordinator.load(background: background)
+        } else if coordinator.background != background {
+            // A theme change: restyle in place, keeping the selection and undo.
+            coordinator.restyle(background: background)
         }
         if let line = file.revealLine {
             // After this update: the view must be laid out to scroll, and state can't change mid-update.
@@ -90,10 +93,21 @@ struct CodeEditor: NSViewRepresentable {
             textView.textColor = Self.colour(background.foreground)
             textView.insertionPointColor = Self.colour(background.foreground)
             textView.string = file.text
-            textView.undoManager?.removeAllActions()
             ruler?.update(colour: Self.colour(background.foreground), font: Self.font)
             if !large { highlight() }
         }
+
+        func restyle(background: TerminalBackground) {
+            guard let textView else { return }
+            self.background = background
+            textView.font = Self.font
+            textView.textColor = Self.colour(background.foreground)
+            textView.insertionPointColor = Self.colour(background.foreground)
+            ruler?.update(colour: Self.colour(background.foreground), font: Self.font)
+            highlight()
+        }
+
+        func undoManager(for view: NSTextView) -> UndoManager? { file.undoManager }
 
         /// Selects line `line` (1-based) and scrolls it into the middle of the view.
         func reveal(line: Int) {
@@ -108,7 +122,15 @@ struct CodeEditor: NSViewRepresentable {
             let range = text.lineRange(for: NSRange(location: min(location, text.length), length: 0))
             textView.window?.makeFirstResponder(textView)
             textView.setSelectedRange(NSRange(location: range.location, length: 0))
-            textView.scrollRangeToVisible(range)
+            if let layout = textView.layoutManager, let container = textView.textContainer,
+               let clip = textView.enclosingScrollView?.contentView {
+                let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                let line = layout.boundingRect(forGlyphRange: glyphs, in: container)
+                let y = line.midY + textView.textContainerOrigin.y - clip.bounds.height / 2
+                let maxY = max(0, textView.frame.height - clip.bounds.height)
+                clip.scroll(to: NSPoint(x: 0, y: min(max(0, y), maxY)))
+                textView.enclosingScrollView?.reflectScrolledClipView(clip)
+            }
             textView.showFindIndicator(for: range)
         }
 
@@ -124,7 +146,8 @@ struct CodeEditor: NSViewRepresentable {
         }
 
         private func highlight() {
-            guard let textView, let storage = textView.textStorage, let background else { return }
+            // Recolouring mid-composition (dead keys, input methods) would drop its underline.
+            guard let textView, !textView.hasMarkedText(), let storage = textView.textStorage, let background else { return }
             let base = Self.colour(background.foreground)
             guard let highlighter, storage.length <= ProjectFiles.largeFile else {
                 storage.setAttributes([.foregroundColor: base, .font: Self.font], range: NSRange(location: 0, length: storage.length))
