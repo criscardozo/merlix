@@ -196,7 +196,8 @@ final class GhosttyRuntime {
         let support = URL.applicationSupportDirectory.appending(path: "com.mitchellh.ghostty", directoryHint: .isDirectory)
         let files = [xdg.appending(path: "ghostty"), support]
             .flatMap { [$0.appending(path: "config"), $0.appending(path: "config.ghostty")] } + [overridesURL]
-        return files.map { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        // Through symlinks: dotfiles setups link the config, and the link's own date never changes.
+        return files.map { try? $0.resolvingSymlinksInPath().resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
     }
 
     private static func loadConfig() -> ghostty_config_t? {
