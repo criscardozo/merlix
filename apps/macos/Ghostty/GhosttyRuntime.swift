@@ -111,6 +111,7 @@ final class GhosttyRuntime {
         }
 
         config = Self.loadConfig()
+        configStamp = Self.configFilesStamp()
         guard let config else { return }
         background = Self.background(of: config)
 
@@ -186,6 +187,18 @@ final class GhosttyRuntime {
     static let overridesURL = URL.applicationSupportDirectory
         .appending(path: "Merlix/ghostty.conf", directoryHint: .notDirectory)
 
+    /// When each config file Merlix reads was last changed; nil for a missing one.
+    @ObservationIgnored private var configStamp: [Date?] = []
+
+    private static func configFilesStamp() -> [Date?] {
+        let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? URL.homeDirectory.appending(path: ".config", directoryHint: .isDirectory)
+        let support = URL.applicationSupportDirectory.appending(path: "com.mitchellh.ghostty", directoryHint: .isDirectory)
+        let files = [xdg.appending(path: "ghostty"), support]
+            .flatMap { [$0.appending(path: "config"), $0.appending(path: "config.ghostty")] } + [overridesURL]
+        return files.map { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+    }
+
     private static func loadConfig() -> ghostty_config_t? {
         guard let config = ghostty_config_new() else { return nil }
         ghostty_config_load_default_files(config)
@@ -230,6 +243,7 @@ final class GhosttyRuntime {
     }
 
     func reloadConfig() {
+        configStamp = Self.configFilesStamp()
         guard let app, let fresh = Self.loadConfig() else { return }
         ghostty_app_update_config(app, fresh)
         if let config { ghostty_config_free(config) }
@@ -239,7 +253,12 @@ final class GhosttyRuntime {
     private func observeApplication() {
         let center = NotificationCenter.default
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { GhosttyRuntime.shared.setAppFocus(true) }
+            MainActor.assumeIsolated {
+                let runtime = GhosttyRuntime.shared
+                runtime.setAppFocus(true)
+                // Ghostty's config edited elsewhere (another app, Ghostty itself): pick it up.
+                if Self.configFilesStamp() != runtime.configStamp { runtime.reloadConfig() }
+            }
         }
         center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { GhosttyRuntime.shared.setAppFocus(false) }
