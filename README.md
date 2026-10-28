@@ -44,8 +44,8 @@ It is named after Merlí, a black cat.
   and a small editor with syntax colours from your terminal theme. Files open in the panel
   or in tabs beside the terminal, with line numbers. ⌘-click a path Claude prints to open
   it at that line.
-- **Plan usage.** Your Claude 5-hour and weekly usage at the bottom of the sidebar,
-  when a status-line usage cache exists at
+- **Plan usage.** Your Claude 5-hour and weekly usage, as a popup at the bottom of the
+  sidebar or pinned to its top (click to pin), when a status-line usage cache exists at
   `~/.claude/.statusline-usage-cache`.
 
 By default nothing in `~/.claude/settings.json` is changed: Merlix starts each Claude

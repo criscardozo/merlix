@@ -24,6 +24,8 @@ struct SidebarView: View {
             .contentShape(Rectangle())
             .gesture(WindowDragGesture())
 
+            PinnedUsage()
+
             GeometryReader { viewport in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {

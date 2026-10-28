@@ -1,9 +1,15 @@
 import SwiftUI
 
+/// Whether Claude's usage sits at the top of the sidebar or pops up from the footer.
+enum UsagePlacement {
+    static let pinnedKey = "usagePinned"
+}
+
 /// The bottom of the sidebar, under a separator: Claude's plan usage on the
-/// left (a ring with the 5-hour window outside and the week inside; hovering
-/// shows the numbers) and Settings on the right.
+/// left (a ring with the 5-hour window; hovering shows the numbers, clicking
+/// pins them to the top of the sidebar) and Settings on the right.
 struct UsageFooter: View {
+    @AppStorage(UsagePlacement.pinnedKey, store: .merlix) private var pinned = false
     @State private var hovering = false
 
     var body: some View {
@@ -13,18 +19,26 @@ struct UsageFooter: View {
                 .fill(.separator)
                 .frame(height: 1)
             HStack(spacing: 8) {
-                if usage.available {
-                    HStack(spacing: 8) {
-                        UsageRing(fiveHours: usage.fiveHours?.used, week: usage.week?.used)
-                            .frame(width: 18, height: 18)
-                        Text("Claude")
-                            .foregroundStyle(hovering ? .primary : .secondary)
+                if usage.available, !pinned {
+                    Button {
+                        hovering = false
+                        withAnimation(.smooth(duration: 0.2)) { pinned = true }
+                    } label: {
+                        HStack(spacing: 8) {
+                            UsageRing(used: usage.fiveHours?.used)
+                                .frame(width: 18, height: 18)
+                            Text("Claude")
+                                .foregroundStyle(hovering ? .primary : .secondary)
+                        }
+                        .opacity(usage.stale ? 0.5 : 1)
+                        .contentShape(Rectangle())
                     }
-                    .opacity(usage.stale ? 0.5 : 1)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                     .onHover { inside in
                         withAnimation(.smooth(duration: 0.18)) { hovering = inside }
                     }
+                    .help("Click to pin usage to the top of the sidebar")
+                    .accessibilityLabel("Claude usage")
                 }
                 Spacer()
                 SettingsLink {
@@ -44,7 +58,7 @@ struct UsageFooter: View {
             .frame(height: 44)
         }
         .overlay(alignment: .bottomLeading) {
-            if hovering {
+            if hovering, !pinned {
                 UsageCard(usage: usage)
                     .padding(.leading, 10)
                     .padding(.bottom, 48)
@@ -56,13 +70,53 @@ struct UsageFooter: View {
     }
 }
 
-private struct UsageCard: View {
+/// Claude's usage at the top of the sidebar, with a button to send it back to the footer.
+struct PinnedUsage: View {
+    @AppStorage(UsagePlacement.pinnedKey, store: .merlix) private var pinned = false
+
+    var body: some View {
+        let usage = UsageMonitor.shared
+        if pinned, usage.available {
+            UsageCard(usage: usage) {
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) { pinned = false }
+                } label: {
+                    Image(systemName: "pin.slash")
+                        .font(.system(size: 11))
+                        .frame(width: 20, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Show usage as a popup from the bottom of the sidebar")
+                .accessibilityLabel("Unpin usage")
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+}
+
+private struct UsageCard<Accessory: View>: View {
     let usage: UsageMonitor
+    var fillsWidth = false
+    let accessory: Accessory
+
+    init(usage: UsageMonitor, @ViewBuilder accessory: () -> Accessory) {
+        self.usage = usage
+        self.fillsWidth = true
+        self.accessory = accessory()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Claude")
-                .font(.system(size: 13, weight: .semibold))
+            HStack {
+                Text("Claude")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
+                accessory
+            }
             if usage.stale {
                 Text("No fresh usage numbers")
                     .foregroundStyle(.secondary)
@@ -75,7 +129,8 @@ private struct UsageCard: View {
         .font(.system(size: 13))
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .fixedSize()
+        .fixedSize(horizontal: !fillsWidth, vertical: true)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -100,10 +155,9 @@ private struct UsageCard: View {
     }
 }
 
-/// Two concentric arcs over faint tracks: 5 hours outside, the week inside.
+/// The 5-hour window as an arc over a faint track.
 struct UsageRing: View {
-    let fiveHours: Double?
-    let week: Double?
+    let used: Double?
 
     static func color(for used: Double) -> Color {
         switch used {
@@ -114,13 +168,6 @@ struct UsageRing: View {
     }
 
     var body: some View {
-        ZStack {
-            arc(fiveHours, inset: 0)
-            arc(week, inset: 4.5)
-        }
-    }
-
-    private func arc(_ used: Double?, inset: CGFloat) -> some View {
         let style = StrokeStyle(lineWidth: 2.25, lineCap: .round)
         return ZStack {
             Circle().stroke(.quaternary, style: style)
@@ -131,6 +178,13 @@ struct UsageRing: View {
                     .rotationEffect(.degrees(-90))
             }
         }
-        .padding(inset + 1.125)
+        .padding(1.125)
+    }
+}
+
+extension UsageCard where Accessory == EmptyView {
+    init(usage: UsageMonitor) {
+        self.usage = usage
+        self.accessory = EmptyView()
     }
 }
