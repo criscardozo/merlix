@@ -21,6 +21,7 @@ struct SettingsView: View {
 private struct GeneralPane: View {
     @AppStorage("sidebarVisible", store: .merlix) private var sidebarVisible = true
     @AppStorage(HiddenSidebarStyle.key, store: .merlix) private var hiddenStyle = HiddenSidebarStyle.focus.rawValue
+    @AppStorage(Workspace.startAllAtLaunchKey, store: .merlix) private var startAllAtLaunch = false
 
     var body: some View {
         Form {
@@ -36,6 +37,16 @@ private struct GeneralPane: View {
                 Text("Layout")
             } footer: {
                 Text("⌃⌘S and the sidebar button switch between Sidebar and the hidden layout chosen here.")
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
+            }
+
+            Section {
+                Toggle("Start every session when Merlix opens", isOn: $startAllAtLaunch)
+            } header: {
+                Text("Sessions")
+            } footer: {
+                Text("Otherwise a session starts the first time you open it, unless its project is set to start when Merlix opens.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             }

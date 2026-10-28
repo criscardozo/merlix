@@ -125,6 +125,15 @@ struct ProjectSheet: View {
                         }
                     }
                 }
+                Section {
+                    Toggle("Start when Merlix opens", isOn: Binding(
+                        get: { draft.project.startsAtLaunch == true },
+                        set: { draft.project.startsAtLaunch = $0 ? true : nil }))
+                } footer: {
+                    Text("Otherwise its session starts the first time you open it.")
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                }
                 if draft.isNew {
                     Section("Start with") {
                         Picker("Start with", selection: $start) {

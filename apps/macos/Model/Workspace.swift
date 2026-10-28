@@ -352,7 +352,7 @@ final class Workspace {
     }
 
     /// Creates the terminal the first time a session is shown. Restored sessions
-    /// stay dormant until then so launching Merlix does not start every Claude.
+    /// stay dormant until then, unless set to start when Merlix opens.
     func start(_ session: Session) {
         guard session.surfaceView == nil, let project = project(for: session) else { return }
         // Pick Claude's conversation id now rather than learning it from the
@@ -765,7 +765,21 @@ final class Workspace {
                 claudeSessionID: record.claudeSessionID, transcriptPath: record.transcriptPath,
                 claudeDirectory: record.claudeDirectory)
         }
+        for session in orderedSessions where startsAtLaunch(session) { start(session) }
         select(snapshot.selectedSessionID ?? orderedSessions.first?.id)
+    }
+
+    static let startAllAtLaunchKey = "startAllSessionsAtLaunch"
+
+    private func startsAtLaunch(_ session: Session) -> Bool {
+        UserDefaults.merlix.bool(forKey: Self.startAllAtLaunchKey)
+            || project(for: session)?.startsAtLaunch == true
+    }
+
+    func setStartsAtLaunch(_ project: Project, _ on: Bool) {
+        guard let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
+        projects[index].startsAtLaunch = on ? true : nil
+        save()
     }
 
     func save() {

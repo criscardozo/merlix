@@ -237,6 +237,9 @@ struct SidebarView: View {
         Button("Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: project.path)])
         }
+        Toggle("Start When Merlix Opens", isOn: Binding(
+            get: { project.startsAtLaunch == true },
+            set: { workspace.setStartsAtLaunch(project, $0) }))
         if let session = workspace.sessions(in: project).first {
             Button("Rename Session…") {
                 text = session.name.isEmpty ? session.displayName : session.name

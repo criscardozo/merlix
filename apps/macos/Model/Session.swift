@@ -11,6 +11,8 @@ struct Project: Identifiable, Codable, Hashable {
     var iconFile: String?
     /// Show the initial even when the folder or GitHub has an icon.
     var usesInitials: Bool?
+    /// Start its sessions when Merlix opens instead of the first time they are shown.
+    var startsAtLaunch: Bool?
 
     var displayPath: String {
         (path as NSString).abbreviatingWithTildeInPath
