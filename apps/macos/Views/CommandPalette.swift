@@ -35,16 +35,19 @@ struct CommandPalette: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 1) {
+                        // Rows are known by their item: an index as identity kept
+                        // showing the old rows while the query narrowed them.
                         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             row(item, highlighted: index == highlighted)
-                                .id(index)
                                 .onTapGesture { highlighted = index; run(items) }
                         }
                     }
                     .padding(6)
                 }
                 .frame(maxHeight: 320)
-                .onChange(of: highlighted) { proxy.scrollTo(highlighted) }
+                .onChange(of: highlighted) {
+                    if items.indices.contains(highlighted) { proxy.scrollTo(items[highlighted].id) }
+                }
             }
             if items.isEmpty {
                 Text("No matches")
@@ -62,14 +65,13 @@ struct CommandPalette: View {
 
     private func row(_ item: Item, highlighted: Bool) -> some View {
         HStack(spacing: 10) {
-            if let session = item.session {
-                StatusIcon(status: session.status, unread: session.unread)
-                    .frame(width: 13, height: 13)
+            if let session = item.session, let project = workspace.project(for: session) {
+                ProjectIconView(project: project, size: 16)
             } else {
                 Image(systemName: "command")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                    .frame(width: 13)
+                    .frame(width: 16)
             }
             Text(item.title)
                 .lineLimit(1)
@@ -77,6 +79,10 @@ struct CommandPalette: View {
             Text(item.detail)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            if let session = item.session {
+                StatusIcon(status: session.status, unread: session.unread)
+                    .frame(width: 13, height: 13)
+            }
         }
         .font(.system(size: 13))
         .padding(.horizontal, 10)
