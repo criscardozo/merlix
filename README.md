@@ -38,7 +38,7 @@ It is named after Merlí, a black cat.
   drag and drop. Icons come from the project folder (`icon.png`, favicons, an Xcode app
   icon), its GitHub owner, or an initial.
 - **Layouts.** A sidebar, tabs across the title bar, or a single focused session.
-- **Terminal comforts.** Splits (⌘D, ⇧⌘D), find (⌘F), a command palette (⇧⌘P), file drop,
+- **Terminal comforts.** Splits (⌘D, ⇧⌘D), find (⌘F), go to a session (⌘P), a command palette (⇧⌘P), file drop,
   secure input at password prompts, and Look Up.
 - **Files.** A panel with the project's files (⌥⌘B), kept current as Claude changes them,
   and a small editor with syntax colours from your terminal theme. Files open in the panel

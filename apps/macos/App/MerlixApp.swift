@@ -150,7 +150,9 @@ struct MerlixCommands: Commands {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
         }
         CommandMenu("Session") {
-            Button("Command Palette…") { Workspace.shared.paletteVisible.toggle() }
+            Button("Go to Session…") { Workspace.shared.togglePalette(sessionsOnly: true) }
+                .keyboardShortcut("p")
+            Button("Command Palette…") { Workspace.shared.togglePalette() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
             Divider()
             Button("Split Right") { Workspace.shared.splitSelected(.right) }

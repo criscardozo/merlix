@@ -100,7 +100,9 @@ private struct PaletteLayer: View {
                 Color.black.opacity(0.15)
                     .contentShape(Rectangle())
                     .onTapGesture { workspace.closePalette() }
-                CommandPalette()
+                CommandPalette(sessionsOnly: workspace.paletteSessionsOnly)
+                    // A fresh query when switching between ⌘P and ⇧⌘P.
+                    .id(workspace.paletteSessionsOnly)
                     .padding(.top, 90)
             }
             .transition(.opacity)

@@ -14,6 +14,18 @@ final class Workspace {
     private(set) var sessions: [Session] = []
     private(set) var selectedSessionID: UUID?
     var paletteVisible = false
+    /// ⌘P: the palette lists only the sessions, to jump to one.
+    private(set) var paletteSessionsOnly = false
+
+    /// Opens the palette, or closes it when it is already open in that mode.
+    func togglePalette(sessionsOnly: Bool = false) {
+        if paletteVisible, paletteSessionsOnly == sessionsOnly {
+            closePalette()
+        } else {
+            paletteSessionsOnly = sessionsOnly
+            paletteVisible = true
+        }
+    }
 
     /// Hides the palette and gives the keyboard back to the terminal.
     func closePalette() {
@@ -473,7 +485,7 @@ final class Workspace {
         case .openLink(let text):
             openLink(text, from: session)
         case .commandPalette:
-            paletteVisible.toggle()
+            togglePalette()
         case .openSettings:
             settingsRequest += 1
         case .searchStarted(let needle):

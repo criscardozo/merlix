@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// ⇧⌘P: jump to any session or run a command by typing part of its name.
+/// ⌘P: the sessions alone.
 struct CommandPalette: View {
+    let sessionsOnly: Bool
     @Environment(Workspace.self) private var workspace
     @AppStorage("sidebarVisible", store: .merlix) private var sidebarVisible = true
     @State private var query = ""
@@ -19,7 +21,7 @@ struct CommandPalette: View {
     var body: some View {
         let items = filtered
         VStack(spacing: 0) {
-            TextField("Search sessions and commands", text: $query)
+            TextField(sessionsOnly ? "Go to session" : "Search sessions and commands", text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .padding(.horizontal, 16)
@@ -94,6 +96,7 @@ struct CommandPalette: View {
                 session: session,
                 run: { workspace.select(session.id) })
         }
+        if sessionsOnly { return items }
         let selected = workspace.selectedSession
         items += [
             Item(id: "new", title: "New Session", detail: "⌘N") { workspace.addSessionItem() },
