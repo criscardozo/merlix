@@ -136,6 +136,9 @@ private struct DetailCard: View {
                 .padding(.leading, flush ? trafficLightsWidth + 56 : 0)
                 .frame(height: flush ? titleBarHeight : titleBarHeight - 16)
                 .background(fill)
+                // The whole strip moves the window, also beside the traffic lights and the tabs.
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
             Rectangle()
                 .fill(.separator)
                 .frame(height: 1)
@@ -222,8 +225,6 @@ private struct CardHeader: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, 16)
-        .contentShape(Rectangle())
-        .gesture(WindowDragGesture())
     }
 }
 
