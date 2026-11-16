@@ -161,7 +161,7 @@ private struct DetailCard: View {
                 }
                 .background(fill)
             } else if let session = workspace.selectedSession {
-                TerminalHost(session: session)
+                TerminalHost(session: session, generation: session.generation)
                     .overlay(alignment: .topTrailing) {
                         if let search = session.search {
                             FindBar(session: session, search: search)

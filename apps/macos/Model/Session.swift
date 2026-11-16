@@ -73,6 +73,9 @@ final class Session: Identifiable {
     /// in a split reports with the same terminal id and must not take over.
     @ObservationIgnored var sessionStartSeen = false
 
+    /// Bumped when the session is restarted, so the window shows the new terminal.
+    var generation = 0
+
     /// The find bar over this session's terminal; nil while it is closed.
     var search: SearchState?
 

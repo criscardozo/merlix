@@ -33,7 +33,8 @@ It is named after Merlí, a black cat.
   notification says what for: the question and its options, the command to run, the
   file to edit.
 - **Sessions that pick up where they left off.** Each Claude session keeps its
-  conversation id, so reopening Merlix resumes every conversation.
+  conversation id, so reopening Merlix resumes every conversation. Restart All Sessions
+  (Session menu) does the same without quitting, say after a Claude Code update.
 - **Projects and groups.** Groups are collapsible labels; projects and groups reorder by
   drag and drop. Icons come from the project folder (`icon.png`, favicons, an Xcode app
   icon), its GitHub owner, or an initial.

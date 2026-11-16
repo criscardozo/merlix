@@ -119,9 +119,11 @@ struct CommandPalette: View {
                 Item(id: "split-down", title: "Split Down", detail: "⇧⌘D") { workspace.splitSelected(.down) },
                 Item(id: "equalize", title: "Equalize Splits", detail: "⌃⌘=") { selected.paneHost?.equalize() },
                 Item(id: "close", title: "Close Session or Pane", detail: "⌘W") { workspace.closeSelectedSession() },
+                Item(id: "restart", title: "Restart Session") { workspace.requestRestart(selected) },
             ]
         }
         items += [
+            Item(id: "restart-all", title: "Restart All Sessions…") { workspace.restartRunningSessions() },
             Item(id: "reload", title: "Reload Terminal Settings", detail: "⇧⌘,") {
                 GhosttyRuntime.shared.reloadConfig()
             },

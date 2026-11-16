@@ -214,6 +214,7 @@ struct SidebarView: View {
             text = session.name.isEmpty ? session.displayName : session.name
             renaming = session
         }
+        Button("Restart Session") { workspace.requestRestart(session) }
         Divider()
         Button("Close Session", role: .destructive) {
             workspace.requestClose(session, processAlive: session.isRunning)

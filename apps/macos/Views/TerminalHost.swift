@@ -6,6 +6,8 @@ import SwiftUI
 /// terminal keeps running in the background.
 struct TerminalHost: NSViewRepresentable {
     let session: Session
+    /// The session's restart count; a new value means a new terminal to show.
+    let generation: Int
 
     func makeNSView(context: Context) -> TerminalContainerView {
         TerminalContainerView()

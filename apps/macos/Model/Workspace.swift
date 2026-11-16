@@ -363,6 +363,52 @@ final class Workspace {
         }
     }
 
+    /// Starts every running session again, after a Claude Code update for
+    /// instance. Claude comes back in the same conversation; splits close.
+    func restartRunningSessions() {
+        let running = orderedSessions.filter { $0.paneHost != nil }
+        guard !running.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = running.count == 1 ? "Restart the running session?" : "Restart \(running.count) running sessions?"
+        alert.informativeText = "Claude Code picks up its conversation again. Anything else running in them is stopped, and splits close."
+        alert.addButton(withTitle: "Restart")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        for session in running { restart(session) }
+        select(selectedSessionID)
+    }
+
+    func requestRestart(_ session: Session) {
+        if session.paneHost != nil, session.allSurfaces.contains(where: \.needsConfirmClose) {
+            let alert = NSAlert()
+            alert.messageText = "Restart “\(session.displayName)”?"
+            alert.informativeText = "Claude Code picks up its conversation again. Anything else running in it is stopped, and splits close."
+            alert.addButton(withTitle: "Restart")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        restart(session)
+        select(selectedSessionID)
+    }
+
+    private func restart(_ session: Session) {
+        for surface in session.allSurfaces { surface.destroy() }
+        session.paneHost?.removeFromSuperview()
+        session.paneHost = nil
+        session.surfaceView = nil
+        session.focusedSurface = nil
+        session.search = nil
+        session.title = nil
+        session.hooksActive = false
+        session.sessionStartSeen = false
+        session.handClaudeRunning = false
+        session.isRunning = false
+        set(session, to: .idle)
+        session.unread = false
+        start(session)
+        session.generation += 1
+    }
+
     /// Creates the terminal the first time a session is shown. Restored sessions
     /// stay dormant until then, unless set to start when Merlix opens.
     func start(_ session: Session) {

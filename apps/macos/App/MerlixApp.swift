@@ -162,6 +162,11 @@ struct MerlixCommands: Commands {
             Button("Equalize Splits") { Workspace.shared.selectedSession?.paneHost?.equalize() }
                 .keyboardShortcut("=", modifiers: [.command, .control])
             Divider()
+            Button("Restart Session") {
+                if let session = Workspace.shared.selectedSession { Workspace.shared.requestRestart(session) }
+            }
+            Button("Restart All Sessions…") { Workspace.shared.restartRunningSessions() }
+            Divider()
             ForEach(1...9, id: \.self) { index in
                 Button("Session \(index)") { Workspace.shared.selectSession(at: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index)")))
