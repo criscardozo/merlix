@@ -92,7 +92,8 @@ it until the submodule changes.
 
 ## Customising
 
-- **Settings (⌘,):** layout, terminal font and size, notifications and Claude Code hooks.
+- **Settings (⌘,):** layout, terminal font, size and light and dark themes, notifications and
+  Claude Code hooks.
 - **Start at launch:** sessions start the first time you open them. Settings › General can
   start them all when Merlix opens, or a single project can from its menu in the sidebar.
 - **`~/Library/Application Support/Merlix/ghostty.conf`:** any Ghostty setting, applied to

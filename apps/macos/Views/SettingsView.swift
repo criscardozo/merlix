@@ -96,9 +96,12 @@ private struct GeneralPane: View {
 private struct TerminalPane: View {
     @AppStorage(TerminalSettings.fontFamilyKey, store: .merlix) private var fontFamily = ""
     @AppStorage(TerminalSettings.fontSizeKey, store: .merlix) private var fontSize = 0.0
+    /// The theme pickers write their own preferences; a change to the lines reloads.
+    @State private var appliedLines = TerminalSettings.configLines
 
     private let monospaced = TerminalSettings.installedMonospacedFamilies()
     private let ghosttyFont = TerminalSettings.ghosttyFontFamily()
+    private let ghosttyTheme = TerminalSettings.ghosttyTheme()
 
     var body: some View {
         Form {
@@ -138,11 +141,22 @@ private struct TerminalPane: View {
             }
 
             Section {
+                ThemePicker(title: "Light", key: TerminalSettings.lightThemeKey, ghostty: ghosttyTheme.light)
+                ThemePicker(title: "Dark", key: TerminalSettings.darkThemeKey, ghostty: ghosttyTheme.dark)
+            } header: {
+                Text("Colours")
+            } footer: {
+                Text("macOS switches between them with its appearance. Your own themes, in ~/.config/ghostty/themes, are listed first.")
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
+            }
+
+            Section {
                 LabeledContent("More terminal settings") {
                     Button("Open ghostty.conf") { GhosttyRuntime.shared.openOverrides() }
                 }
             } footer: {
-                Text("Colours, spacing and everything else Ghostty supports go in Merlix's ghostty.conf. Font and size set here take precedence over it.")
+                Text("Spacing and everything else Ghostty supports go in Merlix's ghostty.conf. Font, size and colours set here take precedence over it.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             }
@@ -152,6 +166,12 @@ private struct TerminalPane: View {
         .padding(.vertical, 8)
         .onChange(of: fontFamily) { GhosttyRuntime.shared.reloadConfig() }
         .onChange(of: fontSize) { GhosttyRuntime.shared.reloadConfig() }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            if TerminalSettings.configLines != appliedLines {
+                appliedLines = TerminalSettings.configLines
+                GhosttyRuntime.shared.reloadConfig()
+            }
+        }
     }
 
     private static let other = "\u{0}other"
@@ -181,6 +201,53 @@ private struct TerminalPane: View {
         Binding(
             get: { fontSize == 0 },
             set: { fontSize = $0 ? 0 : 15 })
+    }
+}
+
+/// A Ghostty theme for one appearance: Ghostty's own, one of the user's, or
+/// "Other…" for the themes that come with Ghostty.
+private struct ThemePicker: View {
+    let title: String
+    let ghostty: String?
+    @AppStorage private var theme: String
+
+    private let mine = TerminalSettings.userThemes()
+    private let bundled = TerminalSettings.bundledThemes()
+    private static let other = "\u{0}other"
+
+    init(title: String, key: String, ghostty: String?) {
+        self.title = title
+        self.ghostty = ghostty
+        _theme = AppStorage(wrappedValue: "", key, store: .merlix)
+    }
+
+    var body: some View {
+        Picker(title, selection: choice) {
+            Text(ghostty.map { "Same as Ghostty (\($0))" } ?? "Same as Ghostty").tag("")
+            if !mine.isEmpty {
+                Divider()
+                ForEach(mine, id: \.self) { Text($0).tag($0) }
+            }
+            Divider()
+            Text("Other…").tag(Self.other)
+        }
+        if choice.wrappedValue == Self.other {
+            Picker("\(title) theme", selection: $theme) {
+                ForEach(bundled, id: \.self) { Text($0).tag($0) }
+            }
+        }
+    }
+
+    private var choice: Binding<String> {
+        Binding(
+            get: { theme.isEmpty || mine.contains(theme) ? theme : Self.other },
+            set: { value in
+                if value == Self.other {
+                    if theme.isEmpty || mine.contains(theme) { theme = bundled.first ?? "" }
+                } else {
+                    theme = value
+                }
+            })
     }
 }
 
@@ -291,6 +358,8 @@ private struct PermissionsPane: View {
 enum TerminalSettings {
     static let fontFamilyKey = "terminalFontFamily"
     static let fontSizeKey = "terminalFontSize"
+    static let lightThemeKey = "terminalThemeLight"
+    static let darkThemeKey = "terminalThemeDark"
 
     static let presets = ["Hack", "JetBrains Mono NL", "JetBrains Mono", "Menlo"]
 
@@ -304,6 +373,20 @@ enum TerminalSettings {
         }
         let size = defaults.double(forKey: fontSizeKey)
         if size > 0 { lines.append("font-size = \(Int(size))") }
+        // Ghostty wants both sides in one value; a side left alone keeps the
+        // theme the config files give it.
+        let light = defaults.string(forKey: lightThemeKey).flatMap { $0.isEmpty ? nil : $0 }
+        let dark = defaults.string(forKey: darkThemeKey).flatMap { $0.isEmpty ? nil : $0 }
+        if light != nil || dark != nil {
+            let current = configuredTheme()
+            let pair = (light ?? current.light, dark ?? current.dark)
+            switch pair {
+            case let (light?, dark?): lines.append("theme = light:\(light),dark:\(dark)")
+            case let (light?, nil): lines.append("theme = \(light)")
+            case let (nil, dark?): lines.append("theme = \(dark)")
+            default: break
+            }
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -315,20 +398,68 @@ enum TerminalSettings {
         }
     }
 
-    /// The last font-family in the user's Ghostty config, to name the default.
-    /// The last font-family in Ghostty's config files, in the order Ghostty
-    /// loads them (XDG first, then Application Support, which wins).
+    /// The last font-family in Ghostty's config files, to name the default.
     static func ghosttyFontFamily() -> String? {
-        let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map { URL(filePath: $0, directoryHint: .isDirectory) }
-            ?? URL.homeDirectory.appending(path: ".config", directoryHint: .isDirectory)
+        lastValue(of: "font-family", in: ghosttyConfigFiles)
+    }
+
+    /// The light and dark themes Ghostty's own config files set.
+    static func ghosttyTheme() -> (light: String?, dark: String?) {
+        parseTheme(lastValue(of: "theme", in: ghosttyConfigFiles))
+    }
+
+    /// The themes before Settings applies: Ghostty's files, then Merlix's ghostty.conf.
+    private static func configuredTheme() -> (light: String?, dark: String?) {
+        parseTheme(lastValue(of: "theme", in: ghosttyConfigFiles + [GhosttyRuntime.overridesURL]))
+    }
+
+    /// `light:A,dark:B`, or one theme for both.
+    private static func parseTheme(_ value: String?) -> (light: String?, dark: String?) {
+        guard let value else { return (nil, nil) }
+        var light: String?
+        var dark: String?
+        for part in value.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            if part.hasPrefix("light:") { light = String(part.dropFirst(6)) }
+            else if part.hasPrefix("dark:") { dark = String(part.dropFirst(5)) }
+        }
+        return light == nil && dark == nil ? (value, value) : (light, dark)
+    }
+
+    /// Ghostty's config files in the order it loads them (XDG first, then
+    /// Application Support, which wins).
+    private static var ghosttyConfigFiles: [URL] {
         let support = URL.applicationSupportDirectory.appending(path: "com.mitchellh.ghostty", directoryHint: .isDirectory)
-        let files = [xdg.appending(path: "ghostty"), support].flatMap { [$0.appending(path: "config"), $0.appending(path: "config.ghostty")] }
+        return [xdgConfig.appending(path: "ghostty"), support].flatMap { [$0.appending(path: "config"), $0.appending(path: "config.ghostty")] }
+    }
+
+    private static var xdgConfig: URL {
+        ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? URL.homeDirectory.appending(path: ".config", directoryHint: .isDirectory)
+    }
+
+    private static func lastValue(of key: String, in files: [URL]) -> String? {
         let text = files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined(separator: "\n")
         return text.split(separator: "\n").compactMap { line -> String? in
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, parts[0] == "font-family" else { return nil }
+            guard parts.count == 2, parts[0] == key else { return nil }
             let value = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\""))
             return value.isEmpty ? nil : value
         }.last
+    }
+
+    /// Themes in ~/.config/ghostty/themes, where Ghostty looks for the user's own.
+    static func userThemes() -> [String] {
+        themes(in: xdgConfig.appending(path: "ghostty/themes", directoryHint: .isDirectory))
+    }
+
+    /// The themes that come with Ghostty, in the app's resources.
+    static func bundledThemes() -> [String] {
+        guard let resources = Bundle.main.resourceURL else { return [] }
+        return themes(in: resources.appending(path: "ghostty/themes", directoryHint: .isDirectory))
+    }
+
+    private static func themes(in folder: URL) -> [String] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.resolvingSymlinksInPath().path)) ?? []
+        return names.filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 }
