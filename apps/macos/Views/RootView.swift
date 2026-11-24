@@ -62,7 +62,7 @@ struct RootView: View {
         }
         .animation(.smooth(duration: 0.25), value: sidebarVisible)
         .overlay(alignment: .top) { PaletteLayer() }
-        .background(SidebarMaterial())
+        .background { WindowTint() }
         .ignoresSafeArea()
         // A fixed title: setting it lays the title bar out again, and Claude's
         // spinner would do that several times a second, undoing the traffic
@@ -347,6 +347,25 @@ private struct SidebarResizeHandle: View {
                         width = min(range.upperBound, max(range.lowerBound, start + delta))
                     }
                     .onEnded { _ in startWidth = nil })
+    }
+}
+
+/// The terminal theme's background over the window's vibrancy, so the sidebar
+/// and the frame around the card match the terminal instead of the system grey.
+/// A touch of the theme's text colour sets the frame apart from the card.
+private struct WindowTint: View {
+    var body: some View {
+        let background = GhosttyRuntime.shared.background
+        let text = background.foreground
+        let mix = 0.05
+        ZStack {
+            SidebarMaterial()
+            Color(
+                red: background.red * (1 - mix) + text.red * mix,
+                green: background.green * (1 - mix) + text.green * mix,
+                blue: background.blue * (1 - mix) + text.blue * mix)
+                .opacity(0.9 * background.opacity)
+        }
     }
 }
 
